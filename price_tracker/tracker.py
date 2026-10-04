@@ -153,7 +153,7 @@ def fetch_source_prices(
     Returns (lowest_price, error_message).
     """
     url = source.get("url", "")
-    selector = source.get("css_selector", "")
+    selector = source.get("css_selector") or source.get("selector", "")
     store = source.get("store", "Unknown")
 
     if not url or not selector:
