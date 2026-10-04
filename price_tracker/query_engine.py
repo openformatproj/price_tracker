@@ -24,6 +24,12 @@ try:
         get_bom_categories,
         parse_price,
     )
+    from .i18n import (
+        t,
+        resolve_lang,
+        get_category_label,
+        DEFAULT_ICONS,
+    )
 except ImportError:
     from tracker import (
         load_bom,
@@ -34,26 +40,14 @@ except ImportError:
         get_bom_categories,
         parse_price,
     )
+    from i18n import (
+        t,
+        resolve_lang,
+        get_category_label,
+        DEFAULT_ICONS,
+    )
 
 logger = logging.getLogger("price_tracker.query_engine")
-
-DEFAULT_ICONS = {
-    "gpu": "🎮",
-    "cpu": "🧠",
-    "cooler": "❄️",
-    "mobo": "🔌",
-    "motherboard": "🔌",
-    "ram": "⚡",
-    "memory": "⚡",
-    "psu": "🔋",
-    "power": "🔋",
-    "case": "📦",
-    "storage": "💾",
-    "ssd": "💾",
-    "hdd": "💽",
-    "fan": "🌀",
-    "monitor": "🖥️",
-}
 
 
 def load_engine_data(
@@ -147,84 +141,91 @@ def calculate_cheapest_build(
     }
 
 
-def format_build_reply(build_data: Dict[str, Any]) -> str:
+def format_build_reply(build_data: Dict[str, Any], lang: Optional[str] = None) -> str:
     """Format cheapest build result into rich Telegram HTML."""
+    actual_lang = resolve_lang(lang)
     items = build_data.get("items", [])
     total_price = build_data.get("total_price", 0.0)
     total_target = build_data.get("total_target", 0.0)
     diff = build_data.get("diff_vs_target", 0.0)
 
     lines = [
-        "🖥️ <b>Configurazione Più Conveniente Attuale</b>",
-        "<i>Combinazione ottimale delle opzioni intercambiabili:</i>\n",
+        t("build_reply_title", lang=actual_lang).rstrip("\n")
     ]
 
     for entry in items:
         item = entry["item"]
         cat = item.get("category", "")
         opt_idx = item.get("option_index", 0)
-        icon = item.get("icon") or DEFAULT_ICONS.get(cat.lower(), "📦")
-        label = item.get("category_label") or f"{icon} <b>{cat.capitalize()}</b>"
+        label = item.get("category_label") or get_category_label(cat, lang=actual_lang)
         price = entry["effective_price"]
         store = entry["store"]
         url = entry["url"]
         target = entry["target_price"]
+        opt_abbr = t("opt_abbr", lang=actual_lang)
 
         if entry.get("price_type") == "purchased":
+            badge = t("badge_purchased", lang=actual_lang)
             lines.append(
-                f"{label}: <b>€{price:.2f}</b> (<b>Acquistato!</b>) ✅\n"
-                f"   ↳ <i>{item['name']}</i> (Opz. {opt_idx})"
+                f"{label}: <b>€{price:.2f}</b> (<b>{badge}</b>) ✅\n"
+                f"   ↳ <i>{item['name']}</i> ({opt_abbr} {opt_idx})"
             )
         else:
             status_tag = ""
             if price <= target:
-                status_tag = " 🎯 <i>(Sotto target!)</i>"
+                status_tag = f" 🎯 <i>({t('badge_below_target', lang=actual_lang)})</i>"
             elif entry["price_type"] == "target_fallback":
-                status_tag = " ⚠️ <i>(Stima target)</i>"
+                status_tag = f" ⚠️ <i>({t('badge_target_estimate', lang=actual_lang)})</i>"
 
+            prep = t("store_preposition", lang=actual_lang)
             link_tag = f'<a href="{url}">{store}</a>' if url else store
             lines.append(
-                f"{label}: <b>€{price:.2f}</b> su {link_tag}{status_tag}\n"
-                f"   ↳ <i>{item['name']}</i> (Opz. {opt_idx})"
+                f"{label}: <b>€{price:.2f}</b> {prep} {link_tag}{status_tag}\n"
+                f"   ↳ <i>{item['name']}</i> ({opt_abbr} {opt_idx})"
             )
 
     lines.append("\n" + "━" * 32)
-    lines.append(f"💰 <b>Totale Attuale:</b> <b>€{total_price:.2f}</b>")
+    current_lbl = t("current_total_label", lang=actual_lang)
+    target_lbl = t("target_total_label", lang=actual_lang)
+    diff_suffix = t("diff_vs_target_suffix", lang=actual_lang)
+    lines.append(f"💰 <b>{current_lbl}</b> <b>€{total_price:.2f}</b>")
     diff_sign = "+" if diff > 0 else "-"
     lines.append(
-        f"🎯 <b>Totale Target:</b> €{total_target:.2f} "
-        f"({diff_sign}€{abs(diff):.2f} rispetto all'obiettivo)"
+        f"🎯 <b>{target_lbl}</b> €{total_target:.2f} "
+        f"({diff_sign}€{abs(diff):.2f} {diff_suffix})"
     )
 
     return "\n".join(lines)
 
 
-def format_build_status_reply(status_data: Dict[str, Any]) -> str:
+def format_build_status_reply(status_data: Dict[str, Any], lang: Optional[str] = None) -> str:
     """Format build progress and budget status into Telegram HTML."""
+    actual_lang = resolve_lang(lang)
     lines = [
-        f"📊 <b>Stato Avanzamento Build ({status_data['completed_count']}/{status_data['total_categories']} acquistati)</b>\n"
+        t("status_title", lang=actual_lang, completed=status_data['completed_count'], total=status_data['total_categories'])
     ]
     if status_data.get("purchased_items"):
-        lines.append("✅ <b>Componenti Acquistati:</b>")
+        lines.append(t("purchased_header_html", lang=actual_lang))
         for p in status_data["purchased_items"]:
             dt_str = f" <i>({p['purchase_date']})</i>" if p.get("purchase_date") else ""
             lines.append(f"• <b>{p['item']['name']}</b>: <b>€{p['purchase_price']:.2f}</b>{dt_str}")
-        lines.append(f"  ↳ 💰 <i>Speso finora:</i> <b>€{status_data['total_spent']:.2f}</b>\n")
+        lines.append(t("spent_so_far_html", lang=actual_lang, spent=status_data['total_spent']))
 
     if status_data.get("pending_categories"):
-        lines.append("⏳ <b>Da Acquistare (Miglior offerta attuale):</b>")
+        lines.append(t("pending_header_html", lang=actual_lang))
+        prep = t("store_preposition", lang=actual_lang)
         for p in status_data["pending_categories"]:
             url = p.get("url")
             store = p.get("store", "Store")
             link_str = f'<a href="{url}">{store}</a>' if url else store
-            lines.append(f"• <b>{p['item']['name']}</b>: <b>€{p['price']:.2f}</b> su {link_str}")
-        lines.append(f"  ↳ ⏳ <i>Rimanente stimato:</i> <b>€{status_data['total_pending']:.2f}</b>\n")
+            lines.append(f"• <b>{p['item']['name']}</b>: <b>€{p['price']:.2f}</b> {prep} {link_str}")
+        lines.append(t("remaining_estimated_html", lang=actual_lang, pending=status_data['total_pending']))
 
     lines.append("━" * 32)
-    lines.append(f"💰 <b>Costo Totale Finale Stimato:</b> <b>€{status_data['total_estimated']:.2f}</b>")
+    lines.append(t("total_estimated_html", lang=actual_lang, total=status_data['total_estimated']))
     diff = status_data["diff_vs_target"]
     diff_str = f"+€{diff:.2f}" if diff > 0 else f"-€{abs(diff):.2f}"
-    lines.append(f"🎯 <b>Budget Target:</b> €{status_data['total_target']:.2f} ({diff_str})")
+    lines.append(t("target_budget_html", lang=actual_lang, target=status_data['total_target'], diff_str=diff_str))
     return "\n".join(lines)
 
 
@@ -269,10 +270,11 @@ def search_items(
     return matches
 
 
-def format_item_reply(matches: List[Dict[str, Any]]) -> str:
+def format_item_reply(matches: List[Dict[str, Any]], lang: Optional[str] = None) -> str:
     """Format matching items into Telegram HTML."""
+    actual_lang = resolve_lang(lang)
     if not matches:
-        return "❌ Nessun componente corrispondente trovato nella distinta base."
+        return t("no_matches_found", lang=actual_lang)
 
     top_matches = matches[:3]
     blocks = []
@@ -287,24 +289,37 @@ def format_item_reply(matches: List[Dict[str, Any]]) -> str:
         lowest = rec.get("lowest_price")
 
         lines = [
-            f"📦 <b>{item['name']}</b>",
-            f"🏷️ <i>Categoria: {item['category']} (Opzione {item.get('option_index', 0)})</i>",
-            f"🎯 <b>Target:</b> €{target:.2f}",
+            t(
+                "item_reply_header",
+                lang=actual_lang,
+                name=item["name"],
+                category=item.get("category", ""),
+                option_index=item.get("option_index", 0),
+                target=target,
+            )
         ]
 
         if rec.get("purchased"):
             p_price = float(rec.get("purchase_price", 0.0))
-            lines.append(f"✅ <b>Stato: ACQUISTATO a €{p_price:.2f}</b>")
+            lines.append(t("item_reply_purchased", lang=actual_lang, price=p_price))
         elif last_price is not None:
             link = f'<a href="{last_url}">{last_store}</a>' if last_url else last_store
             diff = float(last_price) - target
             diff_str = f"(-€{abs(diff):.2f})" if diff <= 0 else f"(+€{diff:.2f})"
-            lines.append(f"💰 <b>Ultimo Prezzo:</b> <b>€{float(last_price):.2f}</b> su {link} {diff_str}")
+            lines.append(
+                t(
+                    "item_reply_last_price",
+                    lang=actual_lang,
+                    price=float(last_price),
+                    link=link,
+                    diff_str=diff_str,
+                )
+            )
         else:
-            lines.append("💰 <b>Ultimo Prezzo:</b> <i>Non ancora rilevato</i>")
+            lines.append(t("item_reply_not_detected", lang=actual_lang))
 
         if lowest is not None:
-            lines.append(f"📉 <b>Minimo Storico:</b> €{float(lowest):.2f}")
+            lines.append(t("item_reply_lowest", lang=actual_lang, price=float(lowest)))
 
         if item.get("description"):
             lines.append(f"ℹ️ <i>{item['description']}</i>")
@@ -345,16 +360,14 @@ def get_active_deals(
     return deals
 
 
-def format_deals_reply(deals: List[Dict[str, Any]]) -> str:
+def format_deals_reply(deals: List[Dict[str, Any]], lang: Optional[str] = None) -> str:
     """Format active bargains into Telegram HTML."""
+    actual_lang = resolve_lang(lang)
     if not deals:
-        return (
-            "ℹ️ <b>Nessuna offerta speciale attiva al momento.</b>\n\n"
-            "Tutti i componenti rilevati si trovano attualmente sopra le soglie target impostate."
-        )
+        return t("no_deals", lang=actual_lang)
 
     lines = [
-        f"🎯 <b>Offerte & Minimi Rilevati ({len(deals)} trovate):</b>\n"
+        t("deals_title", lang=actual_lang, count=len(deals))
     ]
 
     for d in deals:
@@ -365,39 +378,34 @@ def format_deals_reply(deals: List[Dict[str, Any]]) -> str:
         url = d["url"]
         diff = price - target
 
-        badge = "🎯 Sotto Target" if d["is_below_target"] else "📉 Minimo Storico"
+        badge = (
+            t("badge_below_target", lang=actual_lang)
+            if d["is_below_target"]
+            else t("badge_new_lowest", lang=actual_lang)
+        )
         link_str = f'<a href="{url}">{store}</a>' if url else store
         diff_str = f"-€{abs(diff):.2f}" if diff <= 0 else f"+€{diff:.2f}"
 
         lines.append(
-            f"• <b>{item['name']}</b> ({badge})\n"
-            f"  💰 <b>€{price:.2f}</b> su {link_str} | Target: €{target:.2f} ({diff_str})"
+            t(
+                "deal_item_line",
+                lang=actual_lang,
+                name=item["name"],
+                badge=badge,
+                price=price,
+                link=link_str,
+                target=target,
+                diff_str=diff_str,
+            )
         )
 
     return "\n".join(lines)
 
 
-def format_help_reply() -> str:
+def format_help_reply(lang: Optional[str] = None) -> str:
     """Return user guide with sample natural language questions."""
-    return (
-        "🤖 <b>Price Tracker Bot</b>\n\n"
-        "Puoi farmi domande in <b>linguaggio naturale</b> su prezzi, componenti, stato acquisti e build!\n\n"
-        "💡 <b>Esempi di domande e comandi:</b>\n"
-        "• <i>\"Ho comprato la CPU a 316.76€\"</i>\n"
-        "• <i>\"Acquistata scheda madre ASUS TUF a 143.89\"</i>\n"
-        "• <i>\"Ho fatto il reso del componente\"</i>\n"
-        "• <i>\"Cosa ho comprato finora?\"</i> / <i>\"Stato build\"</i>\n"
-        "• <i>\"Qual è la configurazione più conveniente?\"</i>\n"
-        "• <i>\"Quanto costa il processore?\"</i>\n"
-        "• <i>\"Ci sono offerte sotto target al momento?\"</i>\n\n"
-        "⚡ <b>Comandi rapidi:</b>\n"
-        "• /buy &lt;item_id&gt; [prezzo] - Segna un componente come acquistato\n"
-        "• /return &lt;item_id&gt; - Registra un reso e riattiva il monitoraggio\n"
-        "• /status - Mostra avanzamento build e budget speso/rimanente\n"
-        "• /build - Mostra la configurazione più economica\n"
-        "• /deals - Mostra le offerte sotto target\n"
-        "• /help - Mostra questo messaggio"
-    )
+    actual_lang = resolve_lang(lang)
+    return t("help_reply", lang=actual_lang)
 
 
 def classify_and_answer_local(
@@ -405,21 +413,23 @@ def classify_and_answer_local(
     bom: List[Dict[str, Any]],
     history: Dict[str, Any],
     history_path: str = "price_history.json",
+    lang: Optional[str] = None,
 ) -> str:
     """
     Deterministic rule and intent-based natural language answerer.
     Works fast, with 0 external dependencies and 0 costs.
     """
+    actual_lang = resolve_lang(lang)
     q = query.strip().lower()
 
-    if q in ("/start", "/help", "aiuto", "help", "ciao", "cosa puoi fare?"):
-        return format_help_reply()
+    if q in ("/start", "/help", "aiuto", "help", "ciao", "cosa puoi fare?", "what can you do?"):
+        return format_help_reply(lang=actual_lang)
 
     # 1. Purchase / Buy Intent
     buy_match = re.search(r"^/buy\s+([a-zA-Z0-9_-]+)(?:\s+([0-9.,]+))?", q)
     if not buy_match:
         nl_buy = re.search(
-            r"(?:ho\s+(?:comprato|acquistato|preso)|acquistat[oa]|comprat[oa]|segna\s+(?:come\s+)?(?:acquistat[oa]|comprat[oa]))\s+(?:l[aeio]\s+|il\s+)?(.+?)(?:\s+(?:a|per|costo|prezzo)\s+([€\d.,]+))?$",
+            r"(?:ho\s+(?:comprato|acquistato|preso)|acquistat[oa]|comprat[oa]|segna\s+(?:come\s+)?(?:acquistat[oa]|comprat[oa])|i\s+(?:bought|purchased)|mark\s+(?:as\s+)?purchased)\s+(?:l[aeio]\s+|the\s+|il\s+)?(.+?)(?:\s+(?:a|per|for|at|costo|prezzo|cost|price)\s+([€\d.,]+))?$",
             q,
         )
         if nl_buy:
@@ -445,16 +455,19 @@ def classify_and_answer_local(
 
         if matched_item:
             parsed_price = parse_price(price_str) if price_str else None
-            ok, msg, _ = mark_item_purchased(matched_item["id"], parsed_price, history_path=history_path, bom=bom)
+            ok, msg, _ = mark_item_purchased(
+                matched_item["id"], parsed_price, history_path=history_path, bom=bom, lang=actual_lang
+            )
             if ok:
                 h_fresh = history.get(matched_item["id"], {})
                 paid = h_fresh.get("purchase_price", parsed_price or 0.0)
                 cat = matched_item.get("category", "")
-                return (
-                    f"✅ <b>Componente segnato come acquistato!</b>\n\n"
-                    f"📦 <b>{matched_item['name']}</b>\n"
-                    f"💰 <b>Prezzo d'acquisto registrato:</b> €{paid:.2f}\n"
-                    f"⏸️ <i>Il monitoraggio dei prezzi per la categoria <b>{cat.upper()}</b> è stato sospeso.</i>"
+                return t(
+                    "purchase_bot_reply",
+                    lang=actual_lang,
+                    name=matched_item["name"],
+                    price=paid,
+                    category=cat.upper(),
                 )
             else:
                 return f"❌ {msg}"
@@ -463,7 +476,7 @@ def classify_and_answer_local(
     ret_match = re.search(r"^/return\s+([a-zA-Z0-9_-]+)", q)
     if not ret_match:
         nl_ret = re.search(
-            r"(?:ho\s+(?:reso|restituito)|fatto\s+il\s+reso|restituisco|restituit[oa]|annulla\s+acquisto)\s+(?:d[ieall']+|il\s+|la\s+)?(.+)",
+            r"(?:ho\s+(?:reso|restituito)|fatto\s+il\s+reso|restituisco|restituit[oa]|annulla\s+acquisto|i\s+returned|returned|refunded)\s+(?:d[ieall']+|the\s+|il\s+|la\s+)?(.+)",
             q,
         )
         item_query_ret = nl_ret.group(1).strip() if nl_ret else None
@@ -482,13 +495,16 @@ def classify_and_answer_local(
                 matched_item = matches[0]["item"]
 
         if matched_item:
-            ok, msg, _ = mark_item_returned(matched_item["id"], history_path=history_path, bom=bom)
+            ok, msg, _ = mark_item_returned(
+                matched_item["id"], history_path=history_path, bom=bom, lang=actual_lang
+            )
             if ok:
                 cat = matched_item.get("category", "")
-                return (
-                    f"🔄 <b>Reso registrato con successo!</b>\n\n"
-                    f"📦 <b>{matched_item['name']}</b>\n"
-                    f"▶️ <i>Il monitoraggio dei prezzi per la categoria <b>{cat.upper()}</b> è stato riattivato.</i>"
+                return t(
+                    "return_bot_reply",
+                    lang=actual_lang,
+                    name=matched_item["name"],
+                    category=cat.upper(),
                 )
             else:
                 return f"❌ {msg}"
@@ -504,12 +520,15 @@ def classify_and_answer_local(
         r"componenti\s+mancanti",
         r"avanzamento\s+build",
         r"riepilogo\s+spes[ae]",
+        r"what\s+(?:have\s+i|did\s+i)\s+bought",
+        r"build\s+status",
+        r"spending\s+summary",
         r"^/status",
     ]
     for pat in status_patterns:
         if re.search(pat, q):
             st = get_build_status(bom=bom, history=history, history_path=history_path)
-            return format_build_status_reply(st)
+            return format_build_status_reply(st, lang=actual_lang)
 
     # 4. Cheapest configuration intent
     cheapest_patterns = [
@@ -522,13 +541,16 @@ def classify_and_answer_local(
         r"costo.*totale",
         r"quanto.*costa.*(la|l|il).*(build|configurazione|server|computer)",
         r"cheapest.*build",
+        r"best.*build",
+        r"optimal.*build",
+        r"cheapest.*configuration",
         r"/build",
         r"/economica",
     ]
     for pattern in cheapest_patterns:
         if re.search(pattern, q):
             build_data = calculate_cheapest_build(bom, history)
-            return format_build_reply(build_data)
+            return format_build_reply(build_data, lang=actual_lang)
 
     # 5. Active deals intent
     deals_patterns = [
@@ -537,14 +559,16 @@ def classify_and_answer_local(
         r"sotto.*target",
         r"affar[ei]",
         r"ribass[oi]",
-        r"deals",
+        r"deals?",
+        r"discounts?",
+        r"below\s+target",
         r"/deals",
         r"/offerte",
     ]
     for pattern in deals_patterns:
         if re.search(pattern, q):
             deals = get_active_deals(bom, history)
-            return format_deals_reply(deals)
+            return format_deals_reply(deals, lang=actual_lang)
 
     # 6. Target budget intent
     target_budget_patterns = [
@@ -552,30 +576,20 @@ def classify_and_answer_local(
         r"totale.*target",
         r"costo.*target",
         r"spesa.*target",
+        r"target\s+budget",
+        r"total\s+target",
     ]
     for pattern in target_budget_patterns:
         if re.search(pattern, q):
             build_data = calculate_cheapest_build(bom, history)
-            return (
-                f"🎯 <b>Budget Target Complessivo:</b> <b>€{build_data['total_target']:.2f}</b>\n\n"
-                f"Assumendo di raggiungere i prezzi target impostati per l'opzione più economica di ogni categoria."
-            )
+            return t("target_budget_reply", lang=actual_lang, total=build_data['total_target'])
 
     # 7. Search specific item or category
     matches = search_items(query, bom, history)
     if matches and matches[0]["score"] >= 8:
-        return format_item_reply(matches)
+        return format_item_reply(matches, lang=actual_lang)
 
-    return (
-        "🤔 Non ho compreso con certezza la tua richiesta.\n\n"
-        "Prova a chiedermi ad esempio:\n"
-        "• <i>\"Ho comprato la CPU a 316.76€\"</i>\n"
-        "• <i>\"Cosa ho comprato finora?\"</i>\n"
-        "• <i>\"Qual è la configurazione più conveniente?\"</i>\n"
-        "• <i>\"Quanto costa il processore?\"</i>\n"
-        "• <i>\"Ci sono offerte sotto target?\"</i>\n"
-        "Oppure digita /help per la guida completa."
-    )
+    return t("fallback_not_understood", lang=actual_lang)
 
 
 def answer_with_gemini(
@@ -583,11 +597,13 @@ def answer_with_gemini(
     bom: List[Dict[str, Any]],
     history: Dict[str, Any],
     api_key: str,
+    lang: Optional[str] = None,
 ) -> Optional[str]:
     """Invoke Google Gemini 2.5 Flash API with BOM and history context."""
     if not api_key:
         return None
 
+    actual_lang = resolve_lang(lang)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
 
     context_data = {
@@ -610,14 +626,24 @@ def answer_with_gemini(
         "cheapest_calculated_build": calculate_cheapest_build(bom, history),
     }
 
-    system_instruction = (
-        "Sei un assistente AI specializzato nel monitoraggio dei prezzi di distinte base / assemblaggi.\n"
-        "Rispondi alle domande dell'utente in italiano usando ESCLUSIVAMENTE i dati forniti nel contesto.\n"
-        "Se l'utente chiede della configurazione più conveniente o del costo totale, usa i dati di 'cheapest_calculated_build'. "
-        "Indica quale opzione è stata scelta per ciascuna categoria, il prezzo, lo store e il totale finale.\n"
-        "Usa formattazione HTML compatibile con Telegram: <b>grassetto</b>, <i>corsivo</i>, <code>codice</code>, <a href=\"URL\">link</a>.\n"
-        "Sii chiaro, conciso e diretto."
-    )
+    if actual_lang == "en":
+        system_instruction = (
+            "You are an AI assistant specialized in price tracking and BOM / PC build assembly optimization.\n"
+            "Answer user questions in English using EXCLUSIVELY the provided context data.\n"
+            "If the user asks about the cheapest configuration or total cost, use the data from 'cheapest_calculated_build'. "
+            "Specify which option was selected for each category, its price, store, and the final total cost.\n"
+            "Use HTML formatting compatible with Telegram: <b>bold</b>, <i>italic</i>, <code>code</code>, <a href=\"URL\">link</a>.\n"
+            "Be clear, concise, and direct."
+        )
+    else:
+        system_instruction = (
+            "Sei un assistente AI specializzato nel monitoraggio dei prezzi di distinte base / assemblaggi.\n"
+            "Rispondi alle domande dell'utente in italiano usando ESCLUSIVAMENTE i dati forniti nel contesto.\n"
+            "Se l'utente chiede della configurazione più conveniente o del costo totale, usa i dati di 'cheapest_calculated_build'. "
+            "Indica quale opzione è stata scelta per ciascuna categoria, il prezzo, lo store e il totale finale.\n"
+            "Usa formattazione HTML compatibile con Telegram: <b>grassetto</b>, <i>corsivo</i>, <code>codice</code>, <a href=\"URL\">link</a>.\n"
+            "Sii chiaro, conciso e diretto."
+        )
 
     payload = {
         "contents": [
@@ -660,23 +686,32 @@ def answer_query(
     bom_path: str = "bom.json",
     history_path: str = "price_history.json",
     gemini_api_key: Optional[str] = None,
+    lang: Optional[str] = None,
+    config_path: Optional[str] = None,
 ) -> str:
     """
     Main query resolution entry point.
     Tries deterministic local engine for state mutations & common intents,
     falls back to Gemini AI for complex natural conversational requests.
     """
+    actual_lang = resolve_lang(lang=lang, config_path=config_path)
     bom, history = load_engine_data(bom_path, history_path)
     if not bom:
-        return "⚠️ Errore: distinta base (bom.json) non trovata o vuota."
+        return t("bom_empty_or_not_found", lang=actual_lang, path=bom_path)
 
-    local_reply = classify_and_answer_local(query, bom, history, history_path=history_path)
-    if not local_reply.startswith("🤔 Non ho compreso"):
+    local_reply = classify_and_answer_local(
+        query, bom, history, history_path=history_path, lang=actual_lang
+    )
+    fallback_prefix_it = t("fallback_not_understood", lang="it")[:20]
+    fallback_prefix_en = t("fallback_not_understood", lang="en")[:20]
+    is_fallback = local_reply.startswith(fallback_prefix_it) or local_reply.startswith(fallback_prefix_en)
+
+    if not is_fallback:
         return local_reply
 
     api_key = gemini_api_key or os.environ.get("GEMINI_API_KEY")
     if api_key:
-        llm_reply = answer_with_gemini(query, bom, history, api_key)
+        llm_reply = answer_with_gemini(query, bom, history, api_key, lang=actual_lang)
         if llm_reply:
             return llm_reply
 

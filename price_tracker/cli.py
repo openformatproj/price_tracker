@@ -22,6 +22,7 @@ try:
     )
     from .query_engine import answer_query
     from .webhook_server import run_webhook_server
+    from .i18n import t, resolve_lang
 except ImportError:
     from tracker import (
         run_tracker,
@@ -37,12 +38,20 @@ except ImportError:
     )
     from query_engine import answer_query
     from webhook_server import run_webhook_server
+    from i18n import t, resolve_lang
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="price-tracker",
         description="Modular Price Tracking & Assembly Optimization Engine",
+    )
+    parser.add_argument(
+        "--lang",
+        type=str,
+        choices=["it", "en"],
+        default=None,
+        help="Language for messages and outputs ('it' or 'en', default: resolved from config/env/it)",
     )
     parser.add_argument(
         "--bom",
@@ -123,50 +132,62 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
+    actual_lang = resolve_lang(lang=args.lang, config_path=args.config)
+
     # Route command or legacy flags
     if args.command == "ask":
         query_text = " ".join(args.query)
-        print(f"🔍 Domanda: {query_text}\n")
-        reply = answer_query(query_text, bom_path=args.bom, history_path=args.history)
+        print(t("cli_question_label", lang=actual_lang, query=query_text))
+        reply = answer_query(
+            query_text,
+            bom_path=args.bom,
+            history_path=args.history,
+            lang=actual_lang,
+            config_path=args.config,
+        )
         print(reply)
         sys.exit(0)
 
     if args.command == "buy" or args.buy:
         item_id = args.item_id if args.command == "buy" else args.buy[0]
         price = args.price if args.command == "buy" else (float(args.buy[1]) if len(args.buy) > 1 else None)
-        ok, msg, _ = mark_item_purchased(item_id, price, bom_path=args.bom, history_path=args.history)
+        ok, msg, _ = mark_item_purchased(
+            item_id, price, bom_path=args.bom, history_path=args.history, lang=actual_lang
+        )
         print(f"{'✅' if ok else '❌'} {msg}")
         sys.exit(0 if ok else 1)
 
     if args.command == "return" or args.return_item:
         item_id = args.item_id if args.command == "return" else args.return_item
-        ok, msg, _ = mark_item_returned(item_id, bom_path=args.bom, history_path=args.history)
+        ok, msg, _ = mark_item_returned(
+            item_id, bom_path=args.bom, history_path=args.history, lang=actual_lang
+        )
         print(f"{'🔄' if ok else '❌'} {msg}")
         sys.exit(0 if ok else 1)
 
     if args.command == "status" or args.status:
         st = get_build_status(bom_path=args.bom, history_path=args.history)
         print("=" * 65)
-        print(f"📊 Avanzamento Build: {st['completed_count']}/{st['total_categories']} Slot Completati")
+        print(t("status_cli_title", lang=actual_lang, completed=st['completed_count'], total=st['total_categories']))
         print("=" * 65)
         if st["purchased_items"]:
-            print("\n✅ Componenti Acquistati:")
+            print("\n" + t("purchased_header", lang=actual_lang))
             for p in st["purchased_items"]:
                 dt_str = f" ({p['purchase_date']})" if p.get("purchase_date") else ""
                 print(f"  • {p['item']['name']}: €{p['purchase_price']:.2f}{dt_str}")
-            print(f"  💰 Totale Speso Finora: €{st['total_spent']:.2f}")
+            print("  " + t("spent_so_far", lang=actual_lang, spent=st['total_spent']))
 
         if st["pending_categories"]:
-            print("\n⏳ Componenti Mancanti (Migliore Offerta Attuale):")
+            print("\n" + t("pending_header", lang=actual_lang))
             for p in st["pending_categories"]:
                 print(f"  • {p['item']['category'].upper()}: {p['item']['name']} -> €{p['price']:.2f} [{p['store']}]")
-            print(f"  ⏳ Rimanente Stimato: €{st['total_pending']:.2f}")
+            print("  " + t("remaining_estimated", lang=actual_lang, pending=st['total_pending']))
 
         print("\n" + "─" * 65)
-        print(f"💰 Totale Finale Stimato: €{st['total_estimated']:.2f}")
+        print(t("total_estimated", lang=actual_lang, total=st['total_estimated']))
         diff = st['diff_vs_target']
         diff_str = f"+€{diff:.2f}" if diff > 0 else f"-€{abs(diff):.2f}"
-        print(f"🎯 Budget Obiettivo:       €{st['total_target']:.2f} ({diff_str})")
+        print(t("target_budget", lang=actual_lang, target=st['total_target'], diff_str=diff_str))
         print("=" * 65)
         sys.exit(0)
 
@@ -176,22 +197,20 @@ def main() -> None:
             config_path=args.config,
             bom_path=args.bom,
             history_path=args.history,
+            lang=actual_lang,
         )
         sys.exit(0)
 
     if args.command == "test-telegram" or args.test_telegram:
         token, chat_id, _ = load_telegram_config(args.config)
-        print(f"Testing Telegram credentials from {args.config}...")
-        test_msg = (
-            "🤖 <b>Price Tracker Test</b>\n\n"
-            "Tutto configurato correttamente! Il bot è pronto a inviarti notifiche sui prezzi dei componenti."
-        )
+        print(t("cli_test_telegram_testing", lang=actual_lang, config=args.config))
+        test_msg = t("telegram_test_msg", lang=actual_lang)
         success = send_telegram_notification(token, chat_id, test_msg)
         if success:
-            print("✅ Test notification successfully sent! Check your Telegram app.")
+            print(t("cli_test_telegram_success", lang=actual_lang))
             sys.exit(0)
         else:
-            print("❌ Test notification failed. Please verify bot_token and chat_id in telegram_config.json.")
+            print(t("cli_test_telegram_failure", lang=actual_lang))
             sys.exit(1)
 
     # Default: Run tracker check
@@ -207,6 +226,7 @@ def main() -> None:
         dry_run=dry_run,
         force_notify=force_notify,
         target_item_id=target_item_id,
+        lang=actual_lang,
     )
 
 

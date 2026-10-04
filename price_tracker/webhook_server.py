@@ -13,9 +13,11 @@ from typing import Optional
 try:
     from .query_engine import answer_query
     from .tracker import send_telegram_notification, load_telegram_config
+    from .i18n import t, resolve_lang
 except ImportError:
     from query_engine import answer_query
     from tracker import send_telegram_notification, load_telegram_config
+    from i18n import t, resolve_lang
 
 logger = logging.getLogger("price_tracker.webhook_server")
 
@@ -26,6 +28,8 @@ class TelegramWebhookHandler(BaseHTTPRequestHandler):
     gemini_key: Optional[str] = None
     bom_path: str = "bom.json"
     history_path: str = "price_history.json"
+    config_path: str = "telegram_config.json"
+    lang: Optional[str] = None
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
@@ -50,6 +54,7 @@ class TelegramWebhookHandler(BaseHTTPRequestHandler):
             return
 
         logger.info("Received message from chat %s: %s", chat_id, text)
+        actual_lang = resolve_lang(self.lang, config_path=self.config_path)
 
         if self.allowed_chat_id and chat_id != str(self.allowed_chat_id):
             logger.warning("Unauthorized message from chat_id %s rejected.", chat_id)
@@ -57,18 +62,21 @@ class TelegramWebhookHandler(BaseHTTPRequestHandler):
                 send_telegram_notification(
                     self.token,
                     chat_id,
-                    "⛔ <b>Accesso non autorizzato.</b> Questo bot è configurato come privato.",
+                    t("unauthorized_access", lang=actual_lang),
                 )
             self.send_response(200)
             self.end_headers()
             return
 
-        reply_html = answer_query(
-            text,
-            bom_path=self.bom_path,
-            history_path=self.history_path,
-            gemini_api_key=self.gemini_key,
-        )
+        query_kwargs = {
+            "bom_path": self.bom_path,
+            "history_path": self.history_path,
+            "gemini_api_key": self.gemini_key,
+        }
+        if self.lang is not None:
+            query_kwargs["lang"] = self.lang
+
+        reply_html = answer_query(text, **query_kwargs)
 
         if self.token and chat_id:
             send_telegram_notification(self.token, chat_id, reply_html)
@@ -94,6 +102,7 @@ def run_webhook_server(
     bom_path: str = "bom.json",
     history_path: str = "price_history.json",
     gemini_key: Optional[str] = None,
+    lang: Optional[str] = None,
 ) -> None:
     """Run local HTTP server for processing Telegram Webhook requests."""
     token, chat_id, _ = load_telegram_config(config_path)
@@ -103,6 +112,8 @@ def run_webhook_server(
     TelegramWebhookHandler.gemini_key = gemini_key or os.environ.get("GEMINI_API_KEY")
     TelegramWebhookHandler.bom_path = bom_path
     TelegramWebhookHandler.history_path = history_path
+    TelegramWebhookHandler.config_path = config_path
+    TelegramWebhookHandler.lang = lang
 
     server_address = ("", port)
     httpd = HTTPServer(server_address, TelegramWebhookHandler)

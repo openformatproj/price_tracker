@@ -18,6 +18,11 @@ try:
 except ImportError:
     BeautifulSoup = None
 
+try:
+    from .i18n import t, resolve_lang, get_category_label
+except ImportError:
+    from i18n import t, resolve_lang, get_category_label
+
 logger = logging.getLogger("price_tracker")
 
 DEFAULT_BOM_PATH = "bom.json"
@@ -282,6 +287,7 @@ def mark_item_purchased(
     bom_path: str = DEFAULT_BOM_PATH,
     history_path: str = DEFAULT_HISTORY_PATH,
     bom: Optional[List[Dict[str, Any]]] = None,
+    lang: Optional[str] = None,
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Mark an item in BOM as purchased in price history.
@@ -296,7 +302,7 @@ def mark_item_purchased(
             break
 
     if not matched_item:
-        return False, f"Componente '{item_id}' non trovato nella distinta base.", None
+        return False, t("item_not_found_in_bom", lang=lang, item_id=item_id), None
 
     history = load_price_history(history_path)
     rec = history.setdefault(matched_item["id"], {})
@@ -316,7 +322,7 @@ def mark_item_purchased(
     rec["purchase_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     save_price_history(history, history_path)
-    return True, f"Componente '{matched_item['name']}' registrato come acquistato a €{final_price:.2f}.", matched_item
+    return True, t("purchase_success_record", lang=lang, name=matched_item["name"], price=final_price), matched_item
 
 
 def mark_item_returned(
@@ -324,6 +330,7 @@ def mark_item_returned(
     bom_path: str = DEFAULT_BOM_PATH,
     history_path: str = DEFAULT_HISTORY_PATH,
     bom: Optional[List[Dict[str, Any]]] = None,
+    lang: Optional[str] = None,
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
     Mark an item as returned/refunded, removing its purchased state.
@@ -337,7 +344,7 @@ def mark_item_returned(
             break
 
     if not matched_item:
-        return False, f"Componente '{item_id}' non trovato nella distinta base.", None
+        return False, t("item_not_found_in_bom", lang=lang, item_id=item_id), None
 
     history = load_price_history(history_path)
     if matched_item["id"] in history:
@@ -346,7 +353,7 @@ def mark_item_returned(
         history[matched_item["id"]].pop("purchase_date", None)
         save_price_history(history, history_path)
 
-    return True, f"Reso registrato: '{matched_item['name']}' è stato reimpostato per il monitoraggio attivo.", matched_item
+    return True, t("return_success_record", lang=lang, name=matched_item["name"]), matched_item
 
 
 def get_build_status(
@@ -529,10 +536,11 @@ def evaluate_item(
     }
 
 
-def format_telegram_message(eval_result: Dict[str, Any]) -> str:
+def format_telegram_message(eval_result: Dict[str, Any], lang: Optional[str] = None) -> str:
     """
     Format a single alert item into HTML markup for Telegram.
     """
+    actual_lang = resolve_lang(lang)
     item_name = eval_result["item_name"]
     best_price = eval_result["best_price"]
     target_price = eval_result["target_price"]
@@ -542,48 +550,53 @@ def format_telegram_message(eval_result: Dict[str, Any]) -> str:
     category = eval_result.get("category", "")
     option_index = eval_result.get("option_index", 0)
 
-    category_info = f" ({category} - opzione {option_index})" if category else ""
+    category_info = (
+        t("category_option_str", lang=actual_lang, category=category, option_index=option_index)
+        if category else ""
+    )
     diff = best_price - target_price
     diff_sign = "+" if diff > 0 else "-"
     diff_str = f"{diff_sign}€{abs(diff):.2f}"
 
     lines = [
-        f"🚨 <b>Price Alert!</b>\n",
-        f"📦 <b>{item_name}</b>{category_info}\n",
-        f"💰 <b>Prezzo Rilevato:</b> €{best_price:.2f}",
-        f"🎯 <b>Prezzo Target:</b> €{target_price:.2f} ({diff_str})",
-        f"🏬 <b>Store:</b> {best_store}",
+        t(
+            "single_alert_header",
+            lang=actual_lang,
+            item_name=item_name,
+            category_info=category_info,
+            best_price=best_price,
+            target_price=target_price,
+            diff_str=diff_str,
+            best_store=best_store,
+        )
     ]
 
     if reason in ("INITIAL_BELOW_TARGET", "PRICE_DROP"):
-        lines.append("🎯 <i>Il prezzo è sceso sotto la tua soglia target!</i>")
+        lines.append(t("single_alert_below_target", lang=actual_lang))
     elif reason == "NEW_LOWEST":
         prev = eval_result.get("previous_lowest")
         prev_str = f"€{prev:.2f}" if prev is not None else "N/A"
-        lines.append(f"📉 <i>Nuovo minimo storico assoluto! (Precedente: {prev_str})</i>")
+        lines.append(t("single_alert_new_lowest", lang=actual_lang, prev_str=prev_str))
 
     if best_url:
-        lines.append(f'\n🔗 <a href="{best_url}">Apri offerta su {best_store}</a>')
+        lines.append(t("single_alert_open_link", lang=actual_lang, url=best_url, store=best_store))
 
     return "\n".join(lines)
 
 
-def format_aggregated_telegram_message(alerts: List[Dict[str, Any]]) -> str:
+def format_aggregated_telegram_message(alerts: List[Dict[str, Any]], lang: Optional[str] = None) -> str:
     """
     Format multiple alert items into a single consolidated Telegram HTML digest.
     """
     if not alerts:
         return ""
 
+    actual_lang = resolve_lang(lang)
     now_str = datetime.now().strftime("%d/%m/%Y %H:%M")
     count = len(alerts)
-    deal_word = "offerta" if count == 1 else "offerte"
+    deal_word = t("deal_word_single" if count == 1 else "deal_word_plural", lang=actual_lang)
 
-    header = (
-        f"🚨 <b>Price Tracker Alert Digest</b>\n"
-        f"📅 <i>{now_str}</i>\n\n"
-        f"Trovate <b>{count} {deal_word}</b> sotto target o a un nuovo minimo storico:\n"
-    )
+    header = t("digest_header", lang=actual_lang, date=now_str, count=count, deal_word=deal_word)
 
     items_text = []
     for idx, alert in enumerate(alerts, 1):
@@ -596,26 +609,35 @@ def format_aggregated_telegram_message(alerts: List[Dict[str, Any]]) -> str:
         category = alert.get("category", "")
         opt_idx = alert.get("option_index", 0)
 
-        category_str = f" (<i>{category} - option {opt_idx}</i>)" if category else ""
+        category_str = (
+            t("category_digest_str", lang=actual_lang, category=category, opt_idx=opt_idx)
+            if category else ""
+        )
         diff = best_price - target_price
         diff_str = f"-€{abs(diff):.2f}" if diff <= 0 else f"+€{diff:.2f}"
 
         status_line = ""
         if reason in ("INITIAL_BELOW_TARGET", "PRICE_DROP"):
-            status_line = "   🎯 <i>Sotto la soglia target desiderata!</i>\n"
+            status_line = t("digest_status_below_target", lang=actual_lang)
         elif reason == "NEW_LOWEST":
             prev = alert.get("previous_lowest")
             prev_str = f"€{prev:.2f}" if prev is not None else "N/A"
-            status_line = f"   📉 <i>Nuovo minimo storico! (Prec: {prev_str})</i>\n"
+            status_line = t("digest_status_new_lowest", lang=actual_lang, prev=prev_str)
 
-        link_str = f'   🔗 <a href="{best_url}">Apri offerta</a>\n' if best_url else ""
+        link_str = t("open_offer_link", lang=actual_lang, url=best_url) if best_url else ""
 
-        block = (
-            f"<b>{idx}. {item_name}</b>{category_str}\n"
-            f"   💰 <b>Prezzo:</b> €{best_price:.2f} su <b>{best_store}</b>\n"
-            f"   🎯 <b>Target:</b> €{target_price:.2f} ({diff_str})\n"
-            f"{status_line}"
-            f"{link_str}"
+        block = t(
+            "digest_item_block",
+            lang=actual_lang,
+            idx=idx,
+            item_name=item_name,
+            category_str=category_str,
+            best_price=best_price,
+            best_store=best_store,
+            target_price=target_price,
+            diff_str=diff_str,
+            status_line=status_line,
+            link_str=link_str,
         )
         items_text.append(block)
 
@@ -694,10 +716,12 @@ def run_tracker(
     dry_run: bool = False,
     force_notify: bool = False,
     target_item_id: Optional[str] = None,
+    lang: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Main monitoring pipeline.
     """
+    actual_lang = resolve_lang(lang=lang, config_path=config_path)
     token, chat_id, legacy_cookies = load_telegram_config(config_path)
     file_cookies = load_cookies_config(cookies_path)
     cookies = {**legacy_cookies, **file_cookies}
@@ -729,11 +753,11 @@ def run_tracker(
                 }
 
     print("=" * 70)
-    print(f"🔍 Starting Price Check - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(t("starting_check", lang=actual_lang, timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
     if dry_run:
-        print("⚠️  DRY RUN MODE: No notifications will be sent, history will not be saved.")
+        print(t("dry_run_banner", lang=actual_lang))
     if fulfilled_categories:
-        print(f"📦 Slot già completati ({len(fulfilled_categories)} categorie): {', '.join(fulfilled_categories.keys())}")
+        print(t("completed_slots_header", lang=actual_lang, count=len(fulfilled_categories), categories=', '.join(fulfilled_categories.keys())))
     print("=" * 70)
 
     for item in items_to_check:
@@ -745,18 +769,20 @@ def run_tracker(
 
         if h_entry.get("purchased"):
             p_price = float(h_entry.get("purchase_price", 0.0))
-            print(f"\n📦 [{item_id}] {name} (✅ ACQUISTATO a €{p_price:.2f} - Monitoraggio sospeso)")
+            print(f"\n📦 [{item_id}] {name} (" + t("item_purchased_banner", lang=actual_lang, price=p_price) + ")")
             continue
 
         if cat and cat in fulfilled_categories and fulfilled_categories[cat]["item_id"] != item_id:
             fulfilled_by = fulfilled_categories[cat]
             print(
-                f"\n📦 [{item_id}] {name} (Slot '{cat}' già coperto da {fulfilled_by['name']} "
-                f"a €{fulfilled_by['purchase_price']:.2f} - Monitoraggio sospeso)"
+                f"\n📦 [{item_id}] {name} ("
+                + t("slot_fulfilled_banner", lang=actual_lang, category=cat, name=fulfilled_by['name'], price=fulfilled_by['purchase_price'])
+                + ")"
             )
             continue
 
-        print(f"\n📦 [{item_id}] {name} (Target: €{target_price:.2f})")
+        target_lbl = t("target_label", lang=actual_lang)
+        print(f"\n📦 [{item_id}] {name} ({target_lbl}: €{target_price:.2f})")
 
         detected_prices: List[Tuple[float, Dict[str, str]]] = []
 
@@ -770,7 +796,7 @@ def run_tracker(
                 print(f"  • {store:12}: ❌ Error ({err})")
 
         if not detected_prices:
-            print("  ⚠️ No prices detected across all sources for this item.")
+            print("  " + t("no_prices_detected", lang=actual_lang))
             continue
 
         detected_prices.sort(key=lambda x: x[0])
@@ -790,32 +816,32 @@ def run_tracker(
         action_str = eval_res["action"]
         tags = []
         if eval_res["is_below_target"]:
-            tags.append("🎯 SOTTO TARGET")
+            tags.append(t("tag_below_target", lang=actual_lang))
         if eval_res["is_new_lowest"]:
             prev_low = eval_res.get("previous_lowest")
             prev_str = f"€{prev_low:.2f}" if prev_low is not None else "N/A"
-            tags.append(f"📉 NUOVO MINIMO (prec: {prev_str})")
+            tags.append(t("tag_new_lowest", lang=actual_lang, prev=prev_str))
         if eval_res["is_price_drop"]:
-            tags.append("🔻 ULTERIORE CALO")
+            tags.append(t("tag_price_drop", lang=actual_lang))
 
-        tag_display = " ".join(f"[{t}]" for t in tags)
+        tag_display = " ".join(f"[{tag}]" for tag in tags)
         print(f"  ✅ Best: €{best_price:.2f} ({best_store}) {tag_display}")
 
         if action_str == "NOTIFY":
             triggered_alerts.append(eval_res)
-            print(f"  🔔 Alert queued ({eval_res['reason']})")
+            print("  " + t("alert_queued", lang=actual_lang, reason=eval_res['reason']))
         else:
-            print(f"  ℹ️ No alert needed ({eval_res['reason']})")
+            print("  " + t("no_alert_needed", lang=actual_lang, reason=eval_res['reason']))
 
     if triggered_alerts:
-        print(f"\n📬 Collected {len(triggered_alerts)} triggered alert(s).")
+        print("\n" + t("alerts_collected", lang=actual_lang, count=len(triggered_alerts)))
         if dry_run:
-            print("  ⚠️ DRY RUN: Aggregated notification preview:")
+            print(t("dry_run_preview", lang=actual_lang))
             print("-" * 50)
-            print(format_aggregated_telegram_message(triggered_alerts))
+            print(format_aggregated_telegram_message(triggered_alerts, lang=actual_lang))
             print("-" * 50)
         else:
-            agg_msg = format_aggregated_telegram_message(triggered_alerts)
+            agg_msg = format_aggregated_telegram_message(triggered_alerts, lang=actual_lang)
             success = send_telegram_notification(token, chat_id, agg_msg)
             if success:
                 logger.info("Aggregated Telegram alert successfully sent.")
@@ -826,14 +852,14 @@ def run_tracker(
             else:
                 logger.error("Failed to send aggregated Telegram notification.")
     else:
-        print("\nℹ️ No alerts triggered during this run.")
+        print("\n" + t("no_alerts_triggered", lang=actual_lang))
 
     if not dry_run:
         save_price_history(history, history_path)
-        logger.info("Price history saved to %s", history_path)
+        logger.info(t("history_saved", lang=actual_lang, path=history_path))
 
     print("\n" + "=" * 70)
-    print("🏁 Price check finished.")
+    print(t("check_finished", lang=actual_lang))
     print("=" * 70)
 
     return results
