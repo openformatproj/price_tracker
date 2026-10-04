@@ -216,9 +216,13 @@ class TestAggregatedTelegramFormatting(unittest.TestCase):
             }
         ]
         msg = format_aggregated_telegram_message(alerts)
-        self.assertIn("Trovate <b>1 offerta</b>", msg)
+        self.assertIn("Found <b>1 deal</b>", msg)
         self.assertIn("1. Test CPU", msg)
         self.assertIn("€315.00", msg)
+
+        # Also verify Italian override
+        msg_it = format_aggregated_telegram_message(alerts, lang="it")
+        self.assertIn("Trovate <b>1 offerta</b>", msg_it)
 
     def test_multiple_alerts_aggregated(self):
         alerts = [
@@ -245,9 +249,13 @@ class TestAggregatedTelegramFormatting(unittest.TestCase):
             },
         ]
         msg = format_aggregated_telegram_message(alerts)
-        self.assertIn("Trovate <b>2 offerte</b>", msg)
+        self.assertIn("Found <b>2 deals</b>", msg)
         self.assertIn("1. CPU Cooler", msg)
         self.assertIn("2. Motherboard", msg)
+
+        # Also verify Italian override
+        msg_it = format_aggregated_telegram_message(alerts, lang="it")
+        self.assertIn("Trovate <b>2 offerte</b>", msg_it)
 
     @patch("price_tracker.tracker.requests.post")
     def test_send_large_message_split(self, mock_post):
@@ -318,8 +326,15 @@ class TestPurchaseTracking(unittest.TestCase):
             "cpu_ryzen_7900", price=310.0, bom_path=self.bom_path, history_path=self.history_path
         )
         self.assertTrue(ok)
-        self.assertIn("registrato come acquistato", msg)
+        self.assertIn("recorded as purchased", msg)
         self.assertIn("€310.00", msg)
+
+        # Italian override test
+        ok_it, msg_it, _ = mark_item_purchased(
+            "cpu_ryzen_7900", price=310.0, bom_path=self.bom_path, history_path=self.history_path, lang="it"
+        )
+        self.assertTrue(ok_it)
+        self.assertIn("registrato come acquistato", msg_it)
 
         h = load_price_history(self.history_path)
         self.assertTrue(h["cpu_ryzen_7900"]["purchased"])
@@ -338,7 +353,13 @@ class TestPurchaseTracking(unittest.TestCase):
         mark_item_purchased("cpu_ryzen_7900", price=316.76, bom_path=self.bom_path, history_path=self.history_path)
         ok, msg, item = mark_item_returned("cpu_ryzen_7900", bom_path=self.bom_path, history_path=self.history_path)
         self.assertTrue(ok)
-        self.assertIn("Reso registrato", msg)
+        self.assertIn("Return registered", msg)
+
+        # Italian override test
+        mark_item_purchased("cpu_ryzen_7900", price=316.76, bom_path=self.bom_path, history_path=self.history_path)
+        ok_it, msg_it, _ = mark_item_returned("cpu_ryzen_7900", bom_path=self.bom_path, history_path=self.history_path, lang="it")
+        self.assertTrue(ok_it)
+        self.assertIn("Reso registrato", msg_it)
 
         h = load_price_history(self.history_path)
         self.assertFalse(h["cpu_ryzen_7900"]["purchased"])

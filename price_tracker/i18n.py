@@ -8,7 +8,7 @@ import json
 import os
 from typing import Any, Dict, Optional
 
-DEFAULT_LANG = "it"
+DEFAULT_LANG = "en"
 
 CATEGORY_ICONS: Dict[str, str] = {
     "gpu": "🎮",

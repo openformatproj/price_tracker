@@ -168,10 +168,15 @@ class TestQueryEngine(unittest.TestCase):
     def test_format_build_reply(self):
         build = calculate_cheapest_build(self.mock_bom, self.mock_history)
         reply = format_build_reply(build)
-        self.assertIn("Configurazione Più Conveniente Attuale", reply)
+        self.assertIn("Current Most Cost-Effective Configuration", reply)
         self.assertIn("Peerless Assassin", reply)
         self.assertIn("ASUS TUF", reply)
-        self.assertIn("Totale Attuale:", reply)
+        self.assertIn("Current Total:", reply)
+
+        # Italian override test
+        reply_it = format_build_reply(build, lang="it")
+        self.assertIn("Configurazione Più Conveniente Attuale", reply_it)
+        self.assertIn("Totale Attuale:", reply_it)
 
     def test_search_items_by_keywords(self):
         results = search_items("dissipatore peerless", self.mock_bom, self.mock_history)
@@ -183,21 +188,39 @@ class TestQueryEngine(unittest.TestCase):
         self.assertEqual(results_cpu[0]["item"]["id"], "cpu_ryzen_7900")
 
     def test_classify_and_answer_local_intents(self):
-        # Build query
-        reply_build = classify_and_answer_local(
+        # Build query (English default)
+        reply_build_en = classify_and_answer_local(
+            "what is the cheapest build?",
+            self.mock_bom,
+            self.mock_history,
+        )
+        self.assertIn("Current Most Cost-Effective Configuration", reply_build_en)
+
+        # Build query (Italian override)
+        reply_build_it = classify_and_answer_local(
             "qual è la configurazione più conveniente?",
             self.mock_bom,
             self.mock_history,
+            lang="it",
         )
-        self.assertIn("Configurazione Più Conveniente", reply_build)
+        self.assertIn("Configurazione Più Conveniente", reply_build_it)
 
-        # Deals query
-        reply_deals = classify_and_answer_local(
-            "ci sono offerte sotto target?",
+        # Deals query (English default)
+        reply_deals_en = classify_and_answer_local(
+            "any deals below target?",
             self.mock_bom,
             self.mock_history,
         )
-        self.assertIn("Offerte & Minimi", reply_deals)
+        self.assertIn("Active Deals", reply_deals_en)
+
+        # Deals query (Italian override)
+        reply_deals_it = classify_and_answer_local(
+            "ci sono offerte sotto target?",
+            self.mock_bom,
+            self.mock_history,
+            lang="it",
+        )
+        self.assertIn("Offerte & Minimi", reply_deals_it)
 
         # Single item query
         reply_item = classify_and_answer_local(
@@ -221,11 +244,20 @@ class TestQueryEngine(unittest.TestCase):
 
         with patch("price_tracker.query_engine.load_engine_data") as mock_load:
             mock_load.return_value = (self.mock_bom, self.mock_history)
-            reply = answer_query(
-                "qual è la configurazione più economica?",
+            # English default
+            reply_en = answer_query(
+                "what is the most cost-effective build?",
                 gemini_api_key="fake_key_123",
             )
-            self.assertIn("Configurazione Più Conveniente", reply)
+            self.assertIn("Current Most Cost-Effective Configuration", reply_en)
+
+            # Italian override
+            reply_it = answer_query(
+                "qual è la configurazione più economica?",
+                gemini_api_key="fake_key_123",
+                lang="it",
+            )
+            self.assertIn("Configurazione Più Conveniente", reply_it)
 
     def test_buy_and_return_queries(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -233,15 +265,15 @@ class TestQueryEngine(unittest.TestCase):
             with open(hist_file, "w", encoding="utf-8") as f:
                 json.dump(self.mock_history, f)
 
-            # 1. Natural language buy
-            reply_buy = classify_and_answer_local(
-                "ho comprato la cpu ryzen 7900 a 316.76€",
+            # 1. Natural language buy (English default)
+            reply_buy_en = classify_and_answer_local(
+                "i bought the cpu ryzen 7900 for 316.76€",
                 self.mock_bom,
                 self.mock_history,
                 history_path=hist_file,
             )
-            self.assertIn("Componente segnato come acquistato", reply_buy)
-            self.assertIn("€316.76", reply_buy)
+            self.assertIn("Item marked as purchased", reply_buy_en)
+            self.assertIn("€316.76", reply_buy_en)
 
             # Check history was updated
             with open(hist_file, "r", encoding="utf-8") as f:
@@ -249,17 +281,36 @@ class TestQueryEngine(unittest.TestCase):
             self.assertTrue(h["cpu_ryzen_7900"]["purchased"])
             self.assertEqual(h["cpu_ryzen_7900"]["purchase_price"], 316.76)
 
-            # 2. Return query
-            reply_ret = classify_and_answer_local(
-                "fatto il reso del ryzen 7900",
+            # 2. Return query (English default)
+            reply_ret_en = classify_and_answer_local(
+                "returned the ryzen 7900",
                 self.mock_bom,
                 self.mock_history,
                 history_path=hist_file,
             )
-            self.assertIn("Reso registrato con successo", reply_ret)
+            self.assertIn("Return registered successfully", reply_ret_en)
             with open(hist_file, "r", encoding="utf-8") as f:
                 h = json.load(f)
             self.assertFalse(h["cpu_ryzen_7900"]["purchased"])
+
+            # 3. Buy and return in Italian (lang="it")
+            reply_buy_it = classify_and_answer_local(
+                "ho comprato la cpu ryzen 7900 a 316.76€",
+                self.mock_bom,
+                self.mock_history,
+                history_path=hist_file,
+                lang="it",
+            )
+            self.assertIn("Componente segnato come acquistato", reply_buy_it)
+
+            reply_ret_it = classify_and_answer_local(
+                "fatto il reso del ryzen 7900",
+                self.mock_bom,
+                self.mock_history,
+                history_path=hist_file,
+                lang="it",
+            )
+            self.assertIn("Reso registrato con successo", reply_ret_it)
 
     def test_status_query(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -270,13 +321,24 @@ class TestQueryEngine(unittest.TestCase):
             with open(hist_file, "w", encoding="utf-8") as f:
                 json.dump(self.mock_history, f)
 
-            reply_st = classify_and_answer_local(
-                "cosa ho comprato finora?",
+            # English default
+            reply_st_en = classify_and_answer_local(
+                "what did i buy so far?",
                 self.mock_bom,
                 self.mock_history,
                 history_path=hist_file,
             )
-            self.assertIn("Stato Avanzamento Build", reply_st)
+            self.assertIn("Build Progress", reply_st_en)
+
+            # Italian override
+            reply_st_it = classify_and_answer_local(
+                "cosa ho comprato finora?",
+                self.mock_bom,
+                self.mock_history,
+                history_path=hist_file,
+                lang="it",
+            )
+            self.assertIn("Stato Avanzamento Build", reply_st_it)
 
 
 if __name__ == "__main__":

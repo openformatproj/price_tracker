@@ -73,8 +73,16 @@ class TestWebhookServer(unittest.TestCase):
         
         mock_send.assert_called_once()
         args, _ = mock_send.call_args
-        self.assertIn("Accesso non autorizzato", args[2])
+        self.assertIn("Unauthorized access", args[2])
         handler.send_response.assert_called_with(200)
+
+        # Italian override test
+        handler.lang = "it"
+        handler.rfile = BytesIO(body_bytes)
+        mock_send.reset_mock()
+        handler.do_POST()
+        args_it, _ = mock_send.call_args
+        self.assertIn("Accesso non autorizzato", args_it[2])
 
 
 if __name__ == "__main__":
