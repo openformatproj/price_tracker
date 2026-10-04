@@ -21,7 +21,7 @@ Quick start guide for deploying a 100% serverless Telegram bot on Cloudflare Wor
 2. Click **Add**:
    * `TELEGRAM_BOT_TOKEN`: The bot token issued by [@BotFather](https://t.me/BotFather) (Type: Secret).
    * `ALLOWED_CHAT_ID`: Your numerical Telegram chat ID (Type: Secret / Text).
-   * `GITHUB_REPO`: Your GitHub repository in the format `owner/repo` (e.g., `alessandro/server_price_tracker`).
+   * `GITHUB_REPO`: Your GitHub repository in the format `owner/repo` (e.g., `openformatproj/server_price_tracker`).
    * *(Recommended for 24/7 purchases & returns)* `GITHUB_TOKEN`: A GitHub Personal Access Token (Fine-grained with permission `Contents: Read and write`) that allows the Worker to automatically commit updated `price_history.json` back to GitHub whenever you mark an item as purchased or returned directly from Telegram.
    * *(Optional)* `GEMINI_API_KEY`: Your free Google AI Studio API key (Type: Secret) for conversational replies via Gemini 2.5 Flash.
 3. Click **Save and Deploy**.

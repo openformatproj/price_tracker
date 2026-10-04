@@ -77,14 +77,14 @@ The engine is built around three core decoupled ideas:
 
 ### From local path (Editable Mode)
 ```bash
-git clone <repo-url> price_tracker
+git clone https://github.com/openformatproj/price_tracker.git price_tracker
 cd price_tracker
 pip install -e .
 ```
 
 ### Directly from GitHub
 ```bash
-pip install git+https://github.com/<username>/price_tracker.git
+pip install git+https://github.com/openformatproj/price_tracker.git
 ```
 
 ### Requirements only
@@ -148,7 +148,7 @@ These options can be passed to the root command or subcommands:
 | `--history <path>` | `price_history.json` | Path to historical tracking JSON file |
 | `--config <path>` | `telegram_config.json` | Path to Telegram credentials file |
 | `--cookies <path>` | `cookies.json` | Path to anti-bot cookie JSON file |
-| `--lang <it\|en>` | Resolved / `it` | Language for console logs, digests, and bot messages (`it` or `en`) |
+| `--lang <it\|en>` | Resolved / `en` | Language for console logs, digests, and bot messages (`it` or `en`) |
 | `-v, --verbose` | `False` | Enable detailed debug logs |
 
 ---

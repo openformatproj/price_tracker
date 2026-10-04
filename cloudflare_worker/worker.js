@@ -9,7 +9,7 @@
  * Required Secrets / Environment Variables in Cloudflare Worker Settings:
  * - TELEGRAM_BOT_TOKEN : Token provided by @BotFather
  * - ALLOWED_CHAT_ID    : Your numerical Telegram chat ID
- * - GITHUB_REPO        : Your GitHub repo "username/repo" (e.g. "alessandro/server_price_tracker")
+ * - GITHUB_REPO        : Your GitHub repo "username/repo" (e.g. "openformatproj/server_price_tracker")
  * 
  * Optional:
  * - GITHUB_TOKEN       : GitHub Fine-Grained Personal Access Token (contents: write) to save purchases 24/7
@@ -83,7 +83,7 @@ export default {
       }
 
       // Fetch latest BOM and price history from GitHub repository
-      const repo = env.GITHUB_REPO || "alessandro/server_price_tracker";
+      const repo = env.GITHUB_REPO || "openformatproj/server_price_tracker";
       const branch = env.GITHUB_BRANCH || "main";
 
       const [bom, history] = await Promise.all([
