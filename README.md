@@ -148,6 +148,7 @@ These options can be passed to the root command or subcommands:
 | `--history <path>` | `price_history.json` | Path to historical tracking JSON file |
 | `--config <path>` | `telegram_config.json` | Path to Telegram credentials file |
 | `--cookies <path>` | `cookies.json` | Path to anti-bot cookie JSON file |
+| `--lang <it\|en>` | Resolved / `it` | Language for console logs, digests, and bot messages (`it` or `en`) |
 | `-v, --verbose` | `False` | Enable detailed debug logs |
 
 ---
@@ -170,35 +171,41 @@ price-tracker check --force-notify
 # Restrict check to a single specific item ID
 price-tracker check --item cpu_sample
 
+# Explicit language output (e.g. English)
+price-tracker --lang en check --dry-run
+
 # Custom file locations
 price-tracker --bom /path/to/custom_bom.json --history /path/to/custom_history.json check
 ```
 
 #### 2. `price-tracker status` (Build Progress & Budget)
-Displays completed vs pending slots, actual money spent, estimated remaining cost at current prices, and difference against target budget:
+Displays completed vs. pending slots, actual money spent, estimated remaining cost at current prices, and difference against target budget:
 
 ```bash
 price-tracker status
+
+# Or with explicit English language flag:
+price-tracker --lang en status
 ```
 
-*Example Output:*
+*Example Output (English):*
 ```text
 =================================================================
-📊 Avanzamento Build: 1/7 Slot Completati
+📊 Build Progress: 1/7 Slots Completed
 =================================================================
 
-✅ Componenti Acquistati:
+✅ Purchased Components:
   • Motherboard: ASUS TUF: €143.89 (2026-10-04 14:30:00)
-  💰 Totale Speso Finora: €143.89
+  💰 Total Spent So Far: €143.89
 
-⏳ Componenti Mancanti (Migliore Offerta Attuale):
+⏳ Missing Components (Current Best Offer):
   • GPU: NVIDIA RTX 4070 Ti Super -> €850.00 [Target]
   • CPU: AMD Ryzen 9 7900 -> €305.00 [Target]
-  ⏳ Rimanente Stimato: €1155.00
+  ⏳ Estimated Remaining: €1155.00
 
 ─────────────────────────────────────────────────────────────────
-💰 Totale Finale Stimato: €1298.89
-🎯 Budget Obiettivo:       €1350.00 (-€51.11)
+💰 Total Estimated Final Cost: €1298.89
+🎯 Target Budget:       €1350.00 (-€51.11)
 =================================================================
 ```
 
@@ -221,22 +228,27 @@ price-tracker return mobo_tuf
 ```
 
 #### 5. `price-tracker ask` (Natural Language Queries)
-Ask questions in Italian or English. Deterministic regex answers common questions immediately; if `GEMINI_API_KEY` is provided, complex questions fall back to Google Gemini:
+Ask questions in English or Italian. Deterministic regex answers common questions immediately; if `GEMINI_API_KEY` is provided, complex questions fall back to Google Gemini:
 
 ```bash
 # Find optimal build combination
+price-tracker ask "what is the cheapest build?"
 price-tracker ask "qual è la configurazione più conveniente?"
 
 # Check price of an item
+price-tracker ask "how much is the ryzen 7900?"
 price-tracker ask "quanto costa il ryzen 7900?"
 
 # Inquire about active bargains
+price-tracker ask "any deals below target right now?"
 price-tracker ask "ci sono offerte sotto target al momento?"
 
 # Natural language purchase
+price-tracker ask "i bought the asus motherboard for 143.89"
 price-tracker ask "ho comprato la scheda madre asus a 143.89"
 
 # Inquire about build progress
+price-tracker ask "what have I bought so far?"
 price-tracker ask "cosa ho comprato finora?"
 ```
 
@@ -350,10 +362,11 @@ from price_tracker import answer_query
 
 # Answers deterministically or falls back to Gemini if GEMINI_API_KEY is set
 reply_html = answer_query(
-    query="Qual è la scheda madre più economica?",
+    query="What is the cheapest motherboard?",
     bom_path="bom.json",
     history_path="price_history.json",
     gemini_api_key=None,  # Or pass explicit API key
+    lang="en",            # Or "it" (default)
 )
 
 print(reply_html)
@@ -396,7 +409,8 @@ Credentials and settings can be supplied via JSON files or environment variables
 ```json
 {
   "bot_token": "123456789:ABCDefghIJKlmnoPQRstuvWXYZ",
-  "chat_id": "987654321"
+  "chat_id": "987654321",
+  "lang": "en"
 }
 ```
 
@@ -414,6 +428,7 @@ Allows passing domain-specific cookies to bypass anti-bot shields (e.g. DataDome
 Environment variables take precedence over configuration files:
 - `TELEGRAM_BOT_TOKEN`: Telegram bot token from `@BotFather`.
 - `TELEGRAM_CHAT_ID`: Numerical recipient chat ID.
+- `PRICE_TRACKER_LANG`: Default language override (`it` or `en`).
 - `TROVAPREZZI_DATADOME`: DataDome cookie value for `trovaprezzi.it`.
 - `COOKIES_JSON`: Raw JSON string with cookie mappings.
 - `GEMINI_API_KEY`: Google AI Studio API key for enhanced conversational replies.
@@ -533,6 +548,7 @@ Tests cover:
 - Alert threshold evaluation and anti-spam logic.
 - Dynamic category extraction and slot fulfillment.
 - Natural language query classification and intent parsing.
+- Centralized internationalization (i18n), language resolution priority, and message symmetry.
 - Webhook authorization and dispatching.
 - CLI subcommand execution and argument routing.
 
