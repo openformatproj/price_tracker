@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from price_tracker.i18n import (
+from engine.i18n import (
     DEFAULT_LANG,
     MESSAGES,
     CATEGORY_NAMES,
@@ -19,20 +19,20 @@ from price_tracker.i18n import (
     t,
     get_category_label,
 )
-from price_tracker.tracker import (
+from engine.tracker import (
     format_telegram_message,
     format_aggregated_telegram_message,
     mark_item_purchased,
     mark_item_returned,
 )
-from price_tracker.query_engine import (
+from engine.query_engine import (
     format_build_reply,
     format_build_status_reply,
     format_deals_reply,
     format_help_reply,
     classify_and_answer_local,
 )
-from price_tracker.cli import main
+from engine.cli import main
 
 
 class TestI18nCore(unittest.TestCase):
@@ -251,7 +251,7 @@ class TestI18nFormatting(unittest.TestCase):
 
 
 class TestCLILanguage(unittest.TestCase):
-    @patch("price_tracker.cli.run_tracker")
+    @patch("engine.cli.run_tracker")
     def test_cli_lang_flag_passed(self, mock_run):
         with patch.object(sys, "argv", ["price-tracker", "--lang", "en"]):
             main()

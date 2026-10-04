@@ -18,8 +18,8 @@ dependencies = [
 ]
 
 [project.scripts]
-price-tracker = "price_tracker.cli:main"
+price-tracker = "engine.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["price_tracker*"]
+include = ["engine*"]

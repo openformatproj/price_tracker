@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 
-from price_tracker.query_engine import (
+from engine.query_engine import (
     calculate_cheapest_build,
     search_items,
     get_active_deals,
@@ -242,7 +242,7 @@ class TestQueryEngine(unittest.TestCase):
     def test_gemini_fallback_on_failure(self, mock_post):
         mock_post.side_effect = Exception("API connection timeout")
 
-        with patch("price_tracker.query_engine.load_engine_data") as mock_load:
+        with patch("engine.query_engine.load_engine_data") as mock_load:
             mock_load.return_value = (self.mock_bom, self.mock_history)
             # English default
             reply_en = answer_query(

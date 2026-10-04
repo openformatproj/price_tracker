@@ -7,7 +7,7 @@ import json
 from io import BytesIO
 import unittest
 from unittest.mock import patch, MagicMock
-from price_tracker.webhook_server import TelegramWebhookHandler
+from engine.webhook_server import TelegramWebhookHandler
 
 
 class TestWebhookServer(unittest.TestCase):
@@ -16,8 +16,8 @@ class TestWebhookServer(unittest.TestCase):
         TelegramWebhookHandler.allowed_chat_id = "12345678"
         TelegramWebhookHandler.gemini_key = ""
 
-    @patch("price_tracker.webhook_server.send_telegram_notification")
-    @patch("price_tracker.webhook_server.answer_query")
+    @patch("engine.webhook_server.send_telegram_notification")
+    @patch("engine.webhook_server.answer_query")
     def test_authorized_message_dispatches_answer(self, mock_answer, mock_send):
         mock_answer.return_value = "Risposta simulata build più economica"
         payload = {
@@ -49,7 +49,7 @@ class TestWebhookServer(unittest.TestCase):
         mock_send.assert_called_once_with("fake_token_123", "12345678", "Risposta simulata build più economica")
         handler.send_response.assert_called_with(200)
 
-    @patch("price_tracker.webhook_server.send_telegram_notification")
+    @patch("engine.webhook_server.send_telegram_notification")
     def test_unauthorized_message_rejected(self, mock_send):
         payload = {
             "update_id": 1000,

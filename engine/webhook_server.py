@@ -19,7 +19,7 @@ except ImportError:
     from tracker import send_telegram_notification, load_telegram_config
     from i18n import t, resolve_lang
 
-logger = logging.getLogger("price_tracker.webhook_server")
+logger = logging.getLogger(__name__)
 
 
 class TelegramWebhookHandler(BaseHTTPRequestHandler):

@@ -47,7 +47,7 @@ except ImportError:
         DEFAULT_ICONS,
     )
 
-logger = logging.getLogger("price_tracker.query_engine")
+logger = logging.getLogger(__name__)
 
 
 def load_engine_data(

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for price_tracker.tracker
+Unit tests for engine.tracker
 """
 
 import json
@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 try:
-    from price_tracker.tracker import (
+    from engine.tracker import (
         parse_price,
         extract_prices_from_html,
         evaluate_item,
@@ -257,7 +257,7 @@ class TestAggregatedTelegramFormatting(unittest.TestCase):
         msg_it = format_aggregated_telegram_message(alerts, lang="it")
         self.assertIn("Trovate <b>2 offerte</b>", msg_it)
 
-    @patch("price_tracker.tracker.requests.post")
+    @patch("engine.tracker.requests.post")
     def test_send_large_message_split(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -374,7 +374,7 @@ class TestPurchaseTracking(unittest.TestCase):
 
     def test_run_tracker_skips_purchased_and_fulfilled_categories(self):
         mark_item_purchased("mobo_tuf", price=143.89, bom_path=self.bom_path, history_path=self.history_path)
-        with patch("price_tracker.tracker.fetch_source_prices") as mock_fetch:
+        with patch("engine.tracker.fetch_source_prices") as mock_fetch:
             res = run_tracker(
                 bom_path=self.bom_path,
                 history_path=self.history_path,

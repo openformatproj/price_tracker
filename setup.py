@@ -12,7 +12,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "price-tracker=price_tracker.cli:main",
+            "price-tracker=engine.cli:main",
         ],
     },
 )

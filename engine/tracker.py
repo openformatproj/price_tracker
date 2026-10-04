@@ -23,7 +23,7 @@ try:
 except ImportError:
     from i18n import t, resolve_lang, get_category_label
 
-logger = logging.getLogger("price_tracker")
+logger = logging.getLogger(__name__)
 
 DEFAULT_BOM_PATH = "bom.json"
 DEFAULT_CONFIG_PATH = "telegram_config.json"

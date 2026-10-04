@@ -273,13 +273,13 @@ price-tracker test-telegram
 All core functions can be imported directly into your own Python scripts and applications:
 
 ```python
-import price_tracker
+import engine
 ```
 
 ### 1. Running Price Checks & Scraping
 
 ```python
-from price_tracker import run_tracker
+from engine import run_tracker
 
 # Execute price check programmatically
 results = run_tracker(
@@ -303,7 +303,7 @@ for res in results:
 Calculates the cheapest combination of components by choosing the lowest priced option in each category slot:
 
 ```python
-from price_tracker import load_bom, load_price_history, calculate_cheapest_build, format_build_reply
+from engine import load_bom, load_price_history, calculate_cheapest_build, format_build_reply
 
 bom = load_bom("bom.json")
 history = load_price_history("price_history.json")
@@ -327,7 +327,7 @@ telegram_html = format_build_reply(build)
 ### 3. Tracking Purchases & Returns
 
 ```python
-from price_tracker import mark_item_purchased, mark_item_returned, get_build_status
+from engine import mark_item_purchased, mark_item_returned, get_build_status
 
 # Mark an item as purchased
 success, message, item = mark_item_purchased(
@@ -358,7 +358,7 @@ print(message)
 ### 4. Answering Natural Language Questions
 
 ```python
-from price_tracker import answer_query
+from engine import answer_query
 
 # Answers deterministically or falls back to Gemini if GEMINI_API_KEY is set
 reply_html = answer_query(
@@ -366,7 +366,7 @@ reply_html = answer_query(
     bom_path="bom.json",
     history_path="price_history.json",
     gemini_api_key=None,  # Or pass explicit API key
-    lang="en",            # Or "it" (default)
+    lang="en",            # Or "it"
 )
 
 print(reply_html)
@@ -377,7 +377,7 @@ print(reply_html)
 ### 5. Low-Level Web Scraping & HTML Parsing
 
 ```python
-from price_tracker import parse_price, extract_prices_from_html, fetch_source_prices
+from engine import parse_price, extract_prices_from_html, fetch_source_prices
 import requests
 
 # 1. European currency parsing
