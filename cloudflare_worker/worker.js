@@ -17,16 +17,31 @@
  * - GEMINI_API_KEY     : Google AI Studio API key for enhanced conversational intelligence
  */
 
-const ALL_CATEGORIES = ["gpu", "cpu", "cooler", "mobo", "ram", "psu", "case"];
+function getBomCategories(bom) {
+  const seen = new Set();
+  const cats = [];
+  for (const item of (bom || [])) {
+    if (item.category && !seen.has(item.category)) {
+      seen.add(item.category);
+      cats.push(item.category);
+    }
+  }
+  return cats;
+}
 
 const CATEGORY_LABELS = {
   gpu: "🎮 <b>GPU</b>",
   cpu: "🧠 <b>CPU</b>",
   cooler: "❄️ <b>Cooler</b>",
   mobo: "🔌 <b>Motherboard</b>",
+  motherboard: "🔌 <b>Motherboard</b>",
   ram: "⚡ <b>RAM</b>",
+  memory: "⚡ <b>RAM</b>",
   psu: "🔋 <b>PSU</b>",
+  power: "🔋 <b>PSU</b>",
   case: "📦 <b>Case</b>",
+  storage: "💾 <b>Storage</b>",
+  ssd: "💾 <b>SSD</b>",
 };
 
 export default {
@@ -339,8 +354,9 @@ function handleStateMutation(userText, bom, history) {
  * Calculate the cheapest combination of AM5 build components.
  */
 function calculateCheapestBuild(bom, history) {
+  const categories = getBomCategories(bom);
   const byCategory = {};
-  for (const cat of ALL_CATEGORIES) {
+  for (const cat of categories) {
     byCategory[cat] = [];
   }
 
@@ -388,7 +404,7 @@ function calculateCheapestBuild(bom, history) {
   let totalPrice = 0;
   let totalTarget = 0;
 
-  for (const cat of ALL_CATEGORIES) {
+  for (const cat of categories) {
     const options = byCategory[cat] || [];
     if (options.length === 0) continue;
 
@@ -421,7 +437,7 @@ function formatBuildReply(build) {
     const item = entry.item;
     const cat = item.category;
     const optIdx = item.option_index !== undefined ? item.option_index : 0;
-    const label = CATEGORY_LABELS[cat] || `• <b>${cat.toUpperCase()}</b>`;
+    const label = CATEGORY_LABELS[cat.toLowerCase()] || `• <b>${cat.toUpperCase()}</b>`;
     const price = entry.price;
     const store = entry.store;
     const url = entry.url;
@@ -459,8 +475,9 @@ function formatBuildReply(build) {
  * Format build status into HTML message.
  */
 function formatStatusReply(bom, history) {
+  const categories = getBomCategories(bom);
   const byCategory = {};
-  for (const cat of ALL_CATEGORIES) {
+  for (const cat of categories) {
     byCategory[cat] = [];
   }
   for (const item of bom) {
@@ -473,7 +490,7 @@ function formatStatusReply(bom, history) {
   let totalPending = 0;
   let totalTarget = 0;
 
-  for (const cat of ALL_CATEGORIES) {
+  for (const cat of categories) {
     const items = byCategory[cat] || [];
     let bought = null;
     for (const it of items) {

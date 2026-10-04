@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="price-tracker",
+    name="generic-price-tracker",
     version="1.0.0",
     description="Modular & Domain-Agnostic Price Tracking & Assembly Optimization Engine",
     author="Alessandro",

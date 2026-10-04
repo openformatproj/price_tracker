@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "price-tracker"
+name = "generic-price-tracker"
 version = "1.0.0"
 description = "Modular & Domain-Agnostic Price Tracking & Assembly Optimization Engine"
 readme = "README.md"
