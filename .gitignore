@@ -1,0 +1,23 @@
+# Python build & distribution
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+venv/
+
+# Environment and secrets
+.env
+telegram_config.json
+# Runtime data
+bom.json
+price_history.json
+*.tmp
+
+# Test & coverage
+.pytest_cache/
+.coverage
+htmlcov/

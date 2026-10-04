@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "price-tracker"
+version = "1.0.0"
+description = "Modular & Domain-Agnostic Price Tracking & Assembly Optimization Engine"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "Alessandro" }
+]
+dependencies = [
+    "requests>=2.28.0",
+    "beautifulsoup4>=4.11.0",
+]
+
+[project.scripts]
+price-tracker = "price_tracker.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["price_tracker*"]
