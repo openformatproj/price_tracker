@@ -416,6 +416,15 @@ def resolve_lang(
                     return str(file_lang).lower()
         except Exception:
             pass
+    elif os.path.exists("tracker_config.json"):
+        try:
+            with open("tracker_config.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+                file_lang = data.get("lang")
+                if file_lang and str(file_lang).lower() in MESSAGES:
+                    return str(file_lang).lower()
+        except Exception:
+            pass
 
     return DEFAULT_LANG
 
@@ -440,16 +449,47 @@ def t(key: str, lang: Optional[str] = None, **kwargs: Any) -> str:
     return template
 
 
-def get_category_label(category: str, lang: Optional[str] = None) -> str:
+def get_category_label(
+    category: str,
+    lang: Optional[str] = None,
+    config: Optional[Dict[str, Any]] = None,
+    config_path: Optional[str] = None,
+) -> str:
     """
     Return formatted category label with icon and localized name.
     e.g. '🔌 <b>Scheda Madre</b>' (it) or '🔌 <b>Motherboard</b>' (en).
+    Optionally looks up custom overrides in config, config_path, or tracker_config.json.
     """
-    actual_lang = resolve_lang(lang)
     c_lower = category.lower().strip()
+    if config and "category_labels" in config:
+        custom = config["category_labels"].get(c_lower)
+        if custom:
+            return custom
+    elif config_path and os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                custom = data.get("category_labels", {}).get(c_lower)
+                if custom:
+                    return custom
+        except Exception:
+            pass
+    elif os.path.exists("tracker_config.json"):
+        try:
+            with open("tracker_config.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+                custom = data.get("category_labels", {}).get(c_lower)
+                if custom:
+                    return custom
+        except Exception:
+            pass
+
+
+    actual_lang = resolve_lang(lang)
     icon = CATEGORY_ICONS.get(c_lower, "📦")
 
     names = CATEGORY_NAMES.get(actual_lang, CATEGORY_NAMES[DEFAULT_LANG])
     localized_name = names.get(c_lower, category.capitalize())
 
     return f"{icon} <b>{localized_name}</b>"
+

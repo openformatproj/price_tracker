@@ -79,6 +79,22 @@ class TestI18nCore(unittest.TestCase):
         self.assertIn("🎮", label_en)
         self.assertIn("GPU", label_en)
 
+    def test_get_category_label_custom(self):
+        # Custom config dictionary
+        cfg = {"category_labels": {"gpu": "🚀 <b>Graphics Card</b>"}}
+        self.assertEqual(get_category_label("gpu", config=cfg), "🚀 <b>Graphics Card</b>")
+
+        # Custom config file
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump({"category_labels": {"cpu": "🧠 <b>Central Processing Unit</b>"}}, f)
+            cfg_path = f.name
+        try:
+            self.assertEqual(get_category_label("cpu", config_path=cfg_path), "🧠 <b>Central Processing Unit</b>")
+        finally:
+            if os.path.exists(cfg_path):
+                os.remove(cfg_path)
+
+
     def test_resolve_lang_priority(self):
         # 1. Default
         self.assertEqual(resolve_lang(), DEFAULT_LANG)

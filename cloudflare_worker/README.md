@@ -24,8 +24,35 @@ Quick start guide for deploying a 100% serverless Telegram bot on Cloudflare Wor
    * `GITHUB_REPO`: Your GitHub repository in the format `owner/repo` (Type: Text, default: `openformatproj/server_price_tracker`).
    * `GITHUB_BRANCH`: The branch to read from and commit to (Type: Text, default: `main`). Set this to `master` if your repo uses `master`.
    * `GITHUB_TOKEN`: A GitHub Personal Access Token (Type: Secret). Required if your repository is private (to read `bom.json` & `price_history.json`) and to automatically commit purchase/return state back to GitHub when marking items as bought or returned via Telegram.
+   * *(Optional)* `DEFAULT_LANG`: Default language code (`en` or `it`, default: `en`). If not set, the Worker automatically detects `"lang"` from the project's `tracker_config.json` or `telegram_config.json`.
    * *(Optional)* `GEMINI_API_KEY`: Your free Google AI Studio API key (Type: Secret) for conversational replies via Gemini 2.5 Flash.
 3. Click **Save and Deploy**.
+
+#### 🏷️ Project Customization (`tracker_config.json` or `telegram_config.json`)
+The Cloudflare Worker is completely decoupled from any specific hardware or project type. You can customize the bot's language and category labels directly inside your project repository.
+
+For public repositories (where `telegram_config.json` is gitignored to keep tokens secret), create a **`tracker_config.json`** file in your repo root:
+
+```json
+{
+  "lang": "it",
+  "category_labels": {
+    "gpu": "🎮 <b>Scheda Video (GPU)</b>",
+    "cpu": "🧠 <b>Processore (CPU)</b>",
+    "cooler": "❄️ <b>Dissipatore</b>",
+    "mobo": "🔌 <b>Scheda Madre</b>",
+    "ram": "⚡ <b>Memoria RAM</b>",
+    "psu": "🔋 <b>Alimentatore (PSU)</b>",
+    "case": "📦 <b>Case</b>",
+    "storage": "💾 <b>Archiviazione SSD</b>"
+  }
+}
+```
+For private repositories, these settings can also be placed directly inside `telegram_config.json`.
+
+If no custom `category_labels` are defined, the worker falls back gracefully to standard icons or uppercase category names (e.g. `📦 <b>GPU</b>`).
+
+
 
 #### 🔑 How to Generate `GITHUB_TOKEN`
 1. On GitHub, click your profile picture (top right) $\to$ **Settings**.
