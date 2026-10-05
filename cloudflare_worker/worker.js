@@ -87,8 +87,8 @@ export default {
       const branch = env.GITHUB_BRANCH || "main";
 
       const [bom, history] = await Promise.all([
-        fetchJson(`https://raw.githubusercontent.com/${repo}/${branch}/bom.json`, []),
-        fetchJson(`https://raw.githubusercontent.com/${repo}/${branch}/price_history.json`, {}),
+        fetchJson(`https://raw.githubusercontent.com/${repo}/${branch}/bom.json`, [], env.GITHUB_TOKEN),
+        fetchJson(`https://raw.githubusercontent.com/${repo}/${branch}/price_history.json`, {}, env.GITHUB_TOKEN),
       ]);
 
       // Check for purchase / return state mutation first
@@ -160,15 +160,20 @@ export default {
 /**
  * Fetch and parse a JSON file with safe fallback.
  */
-async function fetchJson(url, fallback) {
+async function fetchJson(url, fallback, token) {
   try {
+    const headers = { "User-Agent": "Cloudflare-Worker-Price-Tracker" };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
     const res = await fetch(url, {
-      headers: { "User-Agent": "Cloudflare-Worker-Price-Tracker" },
+      headers,
       cf: { cacheTtl: 30 },
     });
     if (res.ok) {
       return await res.json();
     }
+    console.error(`Failed to fetch ${url}: HTTP ${res.status}`);
   } catch (e) {
     console.error(`Failed to fetch ${url}:`, e);
   }
