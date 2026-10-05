@@ -281,3 +281,4 @@ If the user wants automated store scraping every 6 hours with Telegram alerts:
 | GitHub Actions workflow disabled | GitHub disables cron on new/forked repos | Go to **Actions** tab on GitHub and click *"I understand my workflows, go ahead and enable them"*. |
 | GitHub Actions fails at `git push` (HTTP 403) | Missing write permissions | In GitHub: **Settings** $\to$ **Actions** $\to$ **General** $\to$ **Workflow permissions** $\to$ Select **Read and write permissions**. |
 | Store scraper returns HTTP 403 Forbidden | Site anti-bot protection (e.g. DataDome) | Copy valid session cookie into `cookies.json` locally or configure `COOKIES_JSON` secret in GitHub Actions. |
+
