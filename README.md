@@ -539,10 +539,111 @@ The engine maintains a JSON database tracking the state of each item:
 In addition to local execution, the engine includes a 100% serverless **Cloudflare Worker** located in [`cloudflare_worker/`](cloudflare_worker/):
 
 - Listens to Telegram Webhooks 24/7 at 0 server cost.
-- Fetches fresh `bom.json` and `price_history.json` directly from GitHub.
-- Supports `/buy`, `/return`, `/status`, `/build`, `/deals` directly from Telegram.
+- Fetches fresh `bom.json`, `price_history.json`, and project configuration (`tracker_config.json`) directly from GitHub.
+- Supports `/buy`, `/return`, `/status`, `/build`, `/deals`, and natural language queries directly from Telegram.
 - Uses GitHub REST API with personal access tokens to **automatically commit purchases/returns** back to your GitHub repository.
 - See [`cloudflare_worker/README.md`](cloudflare_worker/README.md) for 2-minute deployment instructions.
+
+---
+
+## ☁️ CI/CD Automation (GitHub Actions)
+
+Any project repository using `price-tracker` can automate price checks 24/7 using GitHub Actions (e.g. running every 6 hours). When a component drops below target or hits a new historical low, alerts are automatically dispatched to Telegram and the updated `price_history.json` is committed back to the repository.
+
+### 1. Workflow Template (`.github/workflows/price_tracker.yml`)
+
+Place this file in your project repository:
+
+```yaml
+name: Price Tracker Automated Check
+
+on:
+  schedule:
+    # Runs every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions UI
+
+permissions:
+  contents: write
+
+concurrency:
+  group: price-tracker
+  cancel-in-progress: false
+
+jobs:
+  track-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install git+https://github.com/openformatproj/price_tracker.git || pip install -r requirements.txt
+
+      - name: Run Price Tracker Check
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TROVAPREZZI_DATADOME: ${{ secrets.TROVAPREZZI_DATADOME }}
+          COOKIES_JSON: ${{ secrets.COOKIES_JSON }}
+        run: |
+          price-tracker check
+
+      - name: Commit and Push Updated Price History
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add price_history.json
+          if git diff --staged --quiet; then
+            echo "ℹ️ No price changes to commit."
+          else
+            git commit -m "chore(tracker): update price history [skip ci]"
+            git push
+            echo "✅ Successfully committed updated price history."
+          fi
+```
+
+### 2. Enable Workflows on GitHub
+On newly created or private repositories, GitHub disables scheduled cron workflows until explicitly enabled:
+1. Open your project repository on GitHub.
+2. Navigate to the **Actions** tab.
+3. If prompted with *"Workflows aren't being run on this repository"*, click:  
+   **"I understand my workflows, go ahead and enable them"**.
+4. In the left sidebar, verify that the workflow is enabled. If disabled, click **Enable workflow**.
+
+### 3. Configure Workflow Permissions (Write Access)
+To allow GitHub Actions to commit and push updated `price_history.json` back to your branch:
+1. In your repository, go to **Settings** $\to$ **Actions** (left sidebar) $\to$ **General**.
+2. Scroll down to the **Workflow permissions** section.
+3. Select **Read and write permissions**.
+4. *(Recommended)* Check **Allow GitHub Actions to create and approve pull requests**.
+5. Click **Save**.
+
+### 4. Configure Repository Secrets
+Set your credentials in GitHub under **Settings** $\to$ **Secrets and variables** $\to$ **Actions** $\to$ **Repository secrets**:
+- `TELEGRAM_BOT_TOKEN`: The bot token issued by `@BotFather`.
+- `TELEGRAM_CHAT_ID`: Your numerical Telegram chat ID.
+- `TROVAPREZZI_DATADOME`: *(Optional)* Shorthand DataDome session cookie value for `trovaprezzi.it`.
+- `COOKIES_JSON`: *(Optional)* Raw JSON string with multi-domain anti-bot cookies.
+
+### 5. Manual Execution & Verification
+To test your workflow immediately without waiting for the scheduled cron:
+1. Go to the **Actions** tab on GitHub.
+2. In the left sidebar, select the workflow name.
+3. On the right, click the **Run workflow** dropdown button.
+4. Select branch **`main`** (or your active branch) and click the green **Run workflow** button.
+5. Inspect the live run logs and check your Telegram app for alerts!
+
 
 ---
 
