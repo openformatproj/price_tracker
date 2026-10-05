@@ -41,9 +41,6 @@ Quick start guide for deploying a 100% serverless Telegram bot on Cloudflare Wor
 5. Click **Generate token** at the bottom and copy the generated token (`github_pat_...`).
 6. In Cloudflare Worker, paste it as the secret value for `GITHUB_TOKEN`.
 
-> 💡 **Note on Cookies (`COOKIES_JSON`)**:  
-> The Cloudflare Worker **only** handles Telegram chat interactions, querying, and recording purchases; it does **not** scrape store prices. Cookie configurations like `COOKIES_JSON` or `TROVAPREZZI_DATADOME` are used exclusively by the Python scraping engine (in GitHub Actions or local CLI), and are **not** needed in Cloudflare Worker.
-
 Copy the public URL assigned to your worker (e.g., `https://server-price-bot.<your-subdomain>.workers.dev`).
 
 ---

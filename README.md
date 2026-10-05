@@ -414,23 +414,35 @@ Credentials and settings can be supplied via JSON files or environment variables
 }
 ```
 
-### Cookie Configuration (`cookies.json`)
-Allows passing domain-specific cookies to bypass anti-bot shields (e.g. DataDome):
-```json
-{
-  "trovaprezzi.it": {
-    "datadome": "YOUR_DATADOME_COOKIE_VALUE"
-  }
-}
-```
+### Cookie Configuration (`cookies.json` & `COOKIES_JSON`)
+Certain e-commerce stores (such as Trovaprezzi.it) protect their catalog with anti-bot challenges (e.g. DataDome). To allow the Python scraper to retrieve live prices without receiving HTTP 403 blocks, you can supply active session cookies:
+
+1. **Local File (`cookies.json`)**:
+   ```json
+   {
+     "trovaprezzi.it": {
+       "datadome": "YOUR_DATADOME_COOKIE_VALUE"
+     }
+   }
+   ```
+
+2. **Environment Variable (`COOKIES_JSON`)**:  
+   In CI/CD automation pipelines (such as GitHub Actions Secrets) or Docker containers where committing physical `cookies.json` files to Git is unsafe or forbidden, pass the exact same domain-to-cookie mapping as an inline JSON string:
+   ```bash
+   export COOKIES_JSON='{"trovaprezzi.it": {"datadome": "YOUR_DATADOME_COOKIE_VALUE"}}'
+   ```
+   *(Alternatively, `TROVAPREZZI_DATADOME` is also supported as a quick shorthand environment variable for just the Trovaprezzi DataDome cookie).*
+
+> 💡 **Scraper vs. Cloudflare Worker**:  
+> Anti-bot cookie configurations (`cookies.json`, `COOKIES_JSON`, `TROVAPREZZI_DATADOME`) are used **only** by the Python scraping engine when running price checks (`price-tracker check` locally or in GitHub Actions). They are **not** required in the Cloudflare Worker, since the Worker only serves Telegram chat webhook inquiries and does not scrape e-commerce stores directly.
 
 ### Supported Environment Variables
 Environment variables take precedence over configuration files:
 - `TELEGRAM_BOT_TOKEN`: Telegram bot token from `@BotFather`.
 - `TELEGRAM_CHAT_ID`: Numerical recipient chat ID.
 - `PRICE_TRACKER_LANG`: Default language override (`it` or `en`).
-- `TROVAPREZZI_DATADOME`: DataDome cookie value for `trovaprezzi.it`.
-- `COOKIES_JSON`: Raw JSON string with cookie mappings.
+- `TROVAPREZZI_DATADOME`: Shorthand DataDome cookie value for `trovaprezzi.it`.
+- `COOKIES_JSON`: Raw JSON string with multi-domain cookie mappings (ideal for CI/CD secrets).
 - `GEMINI_API_KEY`: Google AI Studio API key for enhanced conversational replies.
 
 ---
