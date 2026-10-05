@@ -21,10 +21,28 @@ Quick start guide for deploying a 100% serverless Telegram bot on Cloudflare Wor
 2. Click **Add**:
    * `TELEGRAM_BOT_TOKEN`: The bot token issued by [@BotFather](https://t.me/BotFather) (Type: Secret).
    * `ALLOWED_CHAT_ID`: Your numerical Telegram chat ID (Type: Secret / Text).
-   * `GITHUB_REPO`: Your GitHub repository in the format `owner/repo` (e.g., `openformatproj/server_price_tracker`).
-   * *(Recommended for 24/7 purchases & returns)* `GITHUB_TOKEN`: A GitHub Personal Access Token (Fine-grained with permission `Contents: Read and write`) that allows the Worker to automatically commit updated `price_history.json` back to GitHub whenever you mark an item as purchased or returned directly from Telegram.
+   * `GITHUB_REPO`: Your GitHub repository in the format `owner/repo` (Type: Text, default: `openformatproj/server_price_tracker`).
+   * `GITHUB_BRANCH`: The branch to read from and commit to (Type: Text, default: `main`). Set this to `master` if your repo uses `master`.
+   * `GITHUB_TOKEN`: A GitHub Personal Access Token (Type: Secret). Required if your repository is private (to read `bom.json` & `price_history.json`) and to automatically commit purchase/return state back to GitHub when marking items as bought or returned via Telegram.
    * *(Optional)* `GEMINI_API_KEY`: Your free Google AI Studio API key (Type: Secret) for conversational replies via Gemini 2.5 Flash.
 3. Click **Save and Deploy**.
+
+#### 🔑 How to Generate `GITHUB_TOKEN`
+1. On GitHub, click your profile picture (top right) $\to$ **Settings**.
+2. In the left sidebar, scroll down to the bottom and click **Developer settings**.
+3. Under **Personal access tokens**, click **Fine-grained tokens** $\to$ **Generate new token**.
+4. Fill in the details:
+   * **Token name**: e.g., `price-tracker-cloudflare-worker`
+   * **Expiration**: choose a duration (e.g., 90 days, 1 year, or custom)
+   * **Resource owner**: your username / organization (`openformatproj`)
+   * **Repository access**: select **Only select repositories** $\to$ pick `server_price_tracker`
+   * **Permissions** $\to$ **Repository permissions**:
+     * **Contents**: change from *No access* to **Read and write** (needed to read files from private repos and commit updated `price_history.json`)
+5. Click **Generate token** at the bottom and copy the generated token (`github_pat_...`).
+6. In Cloudflare Worker, paste it as the secret value for `GITHUB_TOKEN`.
+
+> 💡 **Note on Cookies (`COOKIES_JSON`)**:  
+> The Cloudflare Worker **only** handles Telegram chat interactions, querying, and recording purchases; it does **not** scrape store prices. Cookie configurations like `COOKIES_JSON` or `TROVAPREZZI_DATADOME` are used exclusively by the Python scraping engine (in GitHub Actions or local CLI), and are **not** needed in Cloudflare Worker.
 
 Copy the public URL assigned to your worker (e.g., `https://server-price-bot.<your-subdomain>.workers.dev`).
 
