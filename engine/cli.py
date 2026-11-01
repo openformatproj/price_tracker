@@ -6,6 +6,7 @@ CLI entry point for Price Tracker.
 import argparse
 import logging
 import sys
+import requests
 
 try:
     from .tracker import (
@@ -92,6 +93,7 @@ def main() -> None:
     check_parser.add_argument("--dry-run", action="store_true", help="Scrape without saving or alerting")
     check_parser.add_argument("--force-notify", action="store_true", help="Notify even without price drop")
     check_parser.add_argument("--item", type=str, default=None, help="Check only a specific item ID")
+    check_parser.add_argument("--ai", action="store_true", help="Enable AI semantic extraction fallback for broken or selector-less sources")
 
     # 2. ask
     ask_parser = subparsers.add_parser("ask", help="Ask a question in natural language")
@@ -116,10 +118,16 @@ def main() -> None:
     # 7. test-telegram
     subparsers.add_parser("test-telegram", help="Send test notification to Telegram")
 
+    # 8. test-ai
+    test_ai_parser = subparsers.add_parser("test-ai", help="Test AI semantic extraction on a specific BOM item")
+    test_ai_parser.add_argument("item_id", help="BOM item ID (e.g. cpu_ryzen_7900)")
+    test_ai_parser.add_argument("--store", type=str, default=None, help="Filter to a specific store (e.g. Alternate, Trovaprezzi)")
+
     # Fallback flags for backward-compatibility with direct `python tracker.py --dry-run` etc.
     parser.add_argument("--dry-run", action="store_true", help="Scrape prices without notifying or saving")
     parser.add_argument("--force-notify", action="store_true", help="Force Telegram notifications")
     parser.add_argument("--item", type=str, default=None, help="Track only a specific item ID")
+    parser.add_argument("--ai", action="store_true", help="Enable AI semantic extraction fallback")
     parser.add_argument("--test-telegram", action="store_true", help="Send a test message to Telegram")
     parser.add_argument("--buy", nargs="+", metavar=("ITEM_ID", "PRICE"), help="Mark an item as purchased")
     parser.add_argument("--return", dest="return_item", metavar="ITEM_ID", help="Mark an item as returned")
@@ -213,10 +221,59 @@ def main() -> None:
             print(t("cli_test_telegram_failure", lang=actual_lang))
             sys.exit(1)
 
+    if args.command == "test-ai":
+        from .tracker import load_bom, load_cookies_config, DEFAULT_HEADERS
+        from .ai_scraper import extract_price_with_ai
+
+        bom = load_bom(args.bom)
+        matched = next((it for it in bom if it["id"] == args.item_id), None)
+        if not matched:
+            print(f"❌ Item '{args.item_id}' not found in {args.bom}")
+            sys.exit(1)
+
+        cookies = load_cookies_config(args.cookies)
+        session = requests.Session()
+        print(f"🤖 Testing AI Semantic Extraction for: {matched['name']} (Target: €{matched.get('target_price', 0):.2f})")
+        for src in matched.get("sources", []):
+            st_name = src.get("store", "Store")
+            if args.store and args.store.lower() not in st_name.lower():
+                continue
+            url = src.get("url", "")
+            print(f"\n🌐 Fetching {st_name}: {url}")
+            headers = {**DEFAULT_HEADERS, **src.get("headers", {})}
+            req_cookies = {}
+            for dom, c_val in cookies.items():
+                if dom in url and isinstance(c_val, dict):
+                    req_cookies.update(c_val)
+            try:
+                r = session.get(url, headers=headers, cookies=req_cookies or None, timeout=15)
+                print(f"  ↳ HTTP Status: {r.status_code} (HTML length: {len(r.text)} chars)")
+                if r.status_code == 403:
+                    print("  ⚠️ Blocked by anti-bot challenge (HTTP 403). AI extraction requires valid session cookie.")
+                    continue
+                price, err, meta = extract_price_with_ai(matched, src, r.text)
+                if price is not None:
+                    print(f"  ✅ AI Extracted Price: €{price:.2f}")
+                    if meta:
+                        print(f"     • Matched Title: {meta.get('matched_product_title')}")
+                        print(f"     • Seller: {meta.get('seller_or_store')}")
+                        print(f"     • In Stock: {meta.get('in_stock')}")
+                        print(f"     • Condition: {meta.get('condition')}")
+                        if meta.get("suggested_css_selector"):
+                            print(f"     • Suggested CSS Selector: {meta.get('suggested_css_selector')}")
+                        if meta.get("notes"):
+                            print(f"     • Notes: {meta.get('notes')}")
+                else:
+                    print(f"  ❌ AI Extraction Failed: {err}")
+            except Exception as e:
+                print(f"  ❌ Fetch error: {e}")
+        sys.exit(0)
+
     # Default: Run tracker check
     dry_run = getattr(args, "dry_run", False)
     force_notify = getattr(args, "force_notify", False)
     target_item_id = getattr(args, "item", None)
+    enable_ai = getattr(args, "ai", False)
 
     run_tracker(
         config_path=args.config,
@@ -227,6 +284,7 @@ def main() -> None:
         force_notify=force_notify,
         target_item_id=target_item_id,
         lang=actual_lang,
+        enable_ai=enable_ai,
     )
 
 

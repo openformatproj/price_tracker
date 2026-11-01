@@ -35,7 +35,12 @@ from .query_engine import (
     answer_query,
 )
 
-__version__ = "1.0.0"
+from .ai_scraper import (
+    extract_price_with_ai,
+    prune_html_for_ai,
+)
+
+__version__ = "1.1.0"
 __all__ = [
     "load_bom",
     "load_price_history",
@@ -64,4 +69,6 @@ __all__ = [
     "format_item_reply",
     "format_help_reply",
     "answer_query",
+    "extract_price_with_ai",
+    "prune_html_for_ai",
 ]

@@ -28,6 +28,50 @@ class TestCLI(unittest.TestCase):
             self.assertTrue(kwargs["dry_run"])
 
     @patch("engine.cli.run_tracker")
+    def test_cli_check_with_ai_flag(self, mock_run):
+        with patch.object(sys, "argv", ["price-tracker", "check", "--ai"]):
+            main()
+            mock_run.assert_called_once()
+            _, kwargs = mock_run.call_args
+            self.assertTrue(kwargs["enable_ai"])
+
+    @patch("engine.ai_scraper.extract_price_with_ai")
+    @patch("engine.tracker.load_bom")
+    @patch("requests.Session")
+    def test_cli_test_ai_subcommand(self, mock_session_cls, mock_load_bom, mock_extract_ai):
+        mock_load_bom.return_value = [
+            {
+                "id": "cpu_ryzen_7900",
+                "name": "AMD Ryzen 9 7900",
+                "sources": [
+                    {"store": "Alternate", "url": "https://example.com/cpu"}
+                ]
+            }
+        ]
+        mock_session = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "<html><div>AMD Ryzen 9 7900 - €315</div></html>"
+        mock_session.get.return_value = mock_resp
+        mock_session_cls.return_value = mock_session
+
+        mock_extract_ai.return_value = (315.0, None, {
+            "matched": True,
+            "matched_product_title": "AMD Ryzen 9 7900",
+            "best_price": 315.0,
+            "in_stock": True,
+            "is_exact_variant": True,
+            "suggested_css_selector": "div.price",
+            "notes": "Matched CPU"
+        })
+
+        with patch.object(sys, "argv", ["price-tracker", "test-ai", "cpu_ryzen_7900"]):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 0)
+            mock_extract_ai.assert_called_once()
+
+    @patch("engine.cli.run_tracker")
     def test_cli_legacy_flag_dry_run(self, mock_run):
         with patch.object(sys, "argv", ["price-tracker", "--dry-run"]):
             main()

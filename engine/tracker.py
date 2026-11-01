@@ -23,6 +23,15 @@ try:
 except ImportError:
     from i18n import t, resolve_lang, get_category_label
 
+try:
+    from .ai_scraper import extract_price_with_ai, prune_html_for_ai
+except ImportError:
+    try:
+        from ai_scraper import extract_price_with_ai, prune_html_for_ai
+    except ImportError:
+        extract_price_with_ai = None
+        prune_html_for_ai = None
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BOM_PATH = "bom.json"
@@ -152,17 +161,26 @@ def fetch_source_prices(
     session: requests.Session,
     cookies_by_domain: Optional[Dict[str, Any]] = None,
     timeout: int = 15,
+    item: Optional[Dict[str, Any]] = None,
+    api_key: Optional[str] = None,
+    enable_ai: bool = False,
 ) -> Tuple[Optional[float], Optional[str]]:
     """
     Fetch a page from a store source and extract the lowest valid price found.
+    Supports traditional CSS selector matching, with optional AI semantic extraction fallback.
     Returns (lowest_price, error_message).
     """
     url = source.get("url", "")
     selector = source.get("css_selector") or source.get("selector", "")
     store = source.get("store", "Unknown")
+    ai_only = source.get("ai_only", False)
+    use_ai = source.get("use_ai", False) or ai_only or enable_ai
 
-    if not url or not selector:
-        return None, "Missing url or css_selector"
+    if not url:
+        return None, "Missing url"
+
+    if not selector and not use_ai:
+        return None, "Missing css_selector (enable AI with use_ai: true or --ai)"
 
     headers = {**DEFAULT_HEADERS, **source.get("headers", {})}
 
@@ -190,11 +208,32 @@ def fetch_source_prices(
             return None, f"HTTP 404 Not Found"
         resp.raise_for_status()
 
-        prices = extract_prices_from_html(resp.text, selector)
-        if not prices:
-            return None, f"No prices matched selector '{selector}'"
+        # 1. Pure AI Extraction if requested or if no selector configured
+        if ai_only or (not selector and use_ai):
+            if extract_price_with_ai is None or item is None:
+                return None, "AI scraper module not available or missing item context"
+            ai_price, ai_err, ai_meta = extract_price_with_ai(item, source, resp.text, api_key=api_key)
+            if ai_price is not None:
+                return ai_price, None
+            return None, f"AI extraction failed: {ai_err}"
 
-        return min(prices), None
+        # 2. Standard CSS selector extraction
+        prices = extract_prices_from_html(resp.text, selector)
+        if prices:
+            return min(prices), None
+
+        # 3. Fallback to AI semantic extraction if selector returned no matches
+        if use_ai and extract_price_with_ai is not None and item is not None:
+            logger.info("Selector '%s' returned 0 prices. Falling back to Gemini AI extraction...", selector)
+            ai_price, ai_err, ai_meta = extract_price_with_ai(item, source, resp.text, api_key=api_key)
+            if ai_price is not None:
+                suggested = ai_meta.get("suggested_css_selector") if ai_meta else None
+                if suggested:
+                    logger.info("[AI Self-Healing] Discovered new selector for %s: '%s'", store, suggested)
+                return ai_price, None
+            return None, f"No prices matched selector '{selector}' (AI fallback: {ai_err})"
+
+        return None, f"No prices matched selector '{selector}'"
     except requests.exceptions.Timeout:
         return None, f"Request timeout after {timeout}s"
     except requests.exceptions.RequestException as e:
@@ -717,6 +756,7 @@ def run_tracker(
     force_notify: bool = False,
     target_item_id: Optional[str] = None,
     lang: Optional[str] = None,
+    enable_ai: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Main monitoring pipeline.
@@ -788,7 +828,13 @@ def run_tracker(
 
         for source in item.get("sources", []):
             store = source.get("store", "Unknown")
-            price, err = fetch_source_prices(source, session, cookies_by_domain=cookies)
+            price, err = fetch_source_prices(
+                source,
+                session,
+                cookies_by_domain=cookies,
+                item=item,
+                enable_ai=enable_ai,
+            )
             if price is not None:
                 detected_prices.append((price, source))
                 print(f"  • {store:12}: €{price:.2f}")
