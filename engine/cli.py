@@ -223,7 +223,7 @@ def main() -> None:
 
     if args.command == "test-ai":
         from .tracker import load_bom, load_cookies_config, DEFAULT_HEADERS
-        from .ai_scraper import extract_price_with_ai
+        from .ai_scraper import extract_price_with_ai, get_gemini_api_key
 
         bom = load_bom(args.bom)
         matched = next((it for it in bom if it["id"] == args.item_id), None)
@@ -231,6 +231,7 @@ def main() -> None:
             print(f"❌ Item '{args.item_id}' not found in {args.bom}")
             sys.exit(1)
 
+        api_key = get_gemini_api_key(args.config)
         cookies = load_cookies_config(args.cookies)
         session = requests.Session()
         print(f"🤖 Testing AI Semantic Extraction for: {matched['name']} (Target: €{matched.get('target_price', 0):.2f})")
@@ -251,7 +252,7 @@ def main() -> None:
                 if r.status_code == 403:
                     print("  ⚠️ Blocked by anti-bot challenge (HTTP 403). AI extraction requires valid session cookie.")
                     continue
-                price, err, meta = extract_price_with_ai(matched, src, r.text)
+                price, err, meta = extract_price_with_ai(matched, src, r.text, api_key=api_key)
                 if price is not None:
                     print(f"  ✅ AI Extracted Price: €{price:.2f}")
                     if meta:

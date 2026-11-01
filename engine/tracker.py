@@ -24,13 +24,14 @@ except ImportError:
     from i18n import t, resolve_lang, get_category_label
 
 try:
-    from .ai_scraper import extract_price_with_ai, prune_html_for_ai
+    from .ai_scraper import extract_price_with_ai, prune_html_for_ai, get_gemini_api_key
 except ImportError:
     try:
-        from ai_scraper import extract_price_with_ai, prune_html_for_ai
+        from ai_scraper import extract_price_with_ai, prune_html_for_ai, get_gemini_api_key
     except ImportError:
         extract_price_with_ai = None
         prune_html_for_ai = None
+        get_gemini_api_key = None
 
 logger = logging.getLogger(__name__)
 
@@ -766,6 +767,7 @@ def run_tracker(
     file_cookies = load_cookies_config(cookies_path)
     cookies = {**legacy_cookies, **file_cookies}
     history = load_price_history(history_path)
+    api_key = get_gemini_api_key(config_path) if get_gemini_api_key else None
 
     bom_items = load_bom(bom_path)
     items_to_check = bom_items
@@ -833,6 +835,7 @@ def run_tracker(
                 session,
                 cookies_by_domain=cookies,
                 item=item,
+                api_key=api_key,
                 enable_ai=enable_ai,
             )
             if price is not None:

@@ -25,6 +25,31 @@ logger = logging.getLogger(__name__)
 DEFAULT_AI_SCRAPER_MODEL = "gemini-3.5-flash-lite"
 FALLBACK_AI_SCRAPER_MODEL = "gemini-3.8-flash"
 
+
+def get_gemini_api_key(config_path: Optional[str] = None) -> Optional[str]:
+    """
+    Retrieve Gemini API key from environment variable GEMINI_API_KEY
+    or from telegram_config.json / tracker_config.json.
+    """
+    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if key:
+        return key
+
+    paths_to_check = [config_path] if config_path else []
+    paths_to_check.extend(["telegram_config.json", "tracker_config.json"])
+
+    for path in paths_to_check:
+        if path and os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    val = data.get("gemini_api_key") or data.get("google_api_key")
+                    if val and not val.startswith("YOUR_"):
+                        return val
+            except Exception:
+                pass
+    return None
+
 # JSON Schema for Gemini Structured Output
 AI_EXTRACTION_SCHEMA = {
     "type": "object",
@@ -139,7 +164,7 @@ def extract_price_with_ai(
     Returns:
         (price, error_message, full_ai_response_dict)
     """
-    effective_api_key = api_key or os.environ.get("GEMINI_API_KEY")
+    effective_api_key = api_key or get_gemini_api_key()
     if not effective_api_key:
         return None, "GEMINI_API_KEY not configured for AI scraping", None
 

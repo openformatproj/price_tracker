@@ -38,6 +38,7 @@ from .query_engine import (
 from .ai_scraper import (
     extract_price_with_ai,
     prune_html_for_ai,
+    get_gemini_api_key,
 )
 
 __version__ = "1.1.0"
@@ -71,4 +72,5 @@ __all__ = [
     "answer_query",
     "extract_price_with_ai",
     "prune_html_for_ai",
+    "get_gemini_api_key",
 ]
