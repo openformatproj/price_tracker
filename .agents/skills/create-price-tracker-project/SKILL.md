@@ -3,7 +3,8 @@ name: create-price-tracker-project
 description: >-
   Interactive runbook and step-by-step guide to scaffold, configure, and deploy automated price tracking projects
   (like server_price_tracker) powered by the generic price-tracker engine. Covers BOM definition, store scraping sources,
-  Telegram bot setup, 24/7 serverless Cloudflare Workers, and optional scheduled GitHub Actions CI/CD workflows.
+  AI semantic extraction fallback with Gemini, bot protection & cookie resilience, Telegram bot setup,
+  24/7 serverless Cloudflare Workers, and optional scheduled GitHub Actions CI/CD workflows.
 ---
 
 # 🛠️ Create a Price Tracker Project: Step-by-Step Guide
@@ -60,6 +61,8 @@ Ask the user the following questions:
 6. **Automation Level**:
    - Telegram Bot on Cloudflare Worker (interactive queries & purchases)?
    - Scheduled GitHub Actions (automatic scraping every 6h)?
+7. **AI Extraction & Self-Healing**:
+   - Do you want to enable Google Gemini semantic extraction fallback (`--ai` flag / `use_ai: true`) for dynamic/complex stores or self-healing when CSS selectors change? (Requires a free Google AI Studio key).
 
 ---
 
@@ -172,11 +175,18 @@ Explain to the user how each item in `bom.json` is defined:
 ]
 ```
 
-**BOM Design Rules:**
+**BOM Design Rules & AI Features:**
 * `category`: Groups interchangeable alternatives together.
 * `option_index`: `0, 1, 2...` representing alternatives for that category.
 * `target_price`: Price in EUR below which deal alerts are dispatched.
 * `css_selector`: Standard CSS selector targeting the price element in the store HTML.
+* `use_ai`: *(Optional)* If `true`, enables Google Gemini semantic extraction as an automatic fallback if the CSS selector matches 0 prices (e.g. store layout updated). Gemini logs a suggested new CSS selector for self-healing.
+* `ai_only`: *(Optional)* If `true`, bypasses CSS selectors completely and extracts the price purely via Gemini Structured Output schema.
+
+You can test AI semantic extraction on any item interactively:
+```bash
+price-tracker test-ai <item_id> [--store <store_name>]
+```
 
 ---
 
@@ -201,9 +211,11 @@ Explain these steps clearly to the user:
      {
        "bot_token": "YOUR_BOT_TOKEN",
        "chat_id": "YOUR_CHAT_ID",
+       "gemini_api_key": "YOUR_GEMINI_API_KEY",
        "lang": "en"
      }
      ```
+     *(The optional `gemini_api_key` powers AI semantic price extraction and natural language bot answers).*
    - Run verification command:
      ```bash
      price-tracker test-telegram
@@ -264,6 +276,7 @@ If the user wants automated store scraping every 6 hours with Telegram alerts:
    - Go to **Settings** $\to$ **Secrets and variables** $\to$ **Actions** $\to$ **New repository secret**:
      - `TELEGRAM_BOT_TOKEN`: Token from `@BotFather`.
      - `TELEGRAM_CHAT_ID`: Numerical chat ID.
+     - `GEMINI_API_KEY`: *(Optional)* Google AI Studio API key for AI semantic price extraction (`--ai`).
      - `TROVAPREZZI_DATADOME` or `COOKIES_JSON`: *(Optional)* Anti-bot cookies if scraping protected sites.
 5. **Test Manually**:
    - Go to **Actions** $\to$ Select workflow $\to$ Click **Run workflow** dropdown $\to$ Branch `main` $\to$ **Run workflow**.
@@ -280,5 +293,5 @@ If the user wants automated store scraping every 6 hours with Telegram alerts:
 | Purchases in Telegram are not saved to GitHub | Missing or invalid `GITHUB_TOKEN` | Create a Fine-Grained GitHub PAT with **Contents: Read & write** permissions for the repository, and set it as `GITHUB_TOKEN` secret in Cloudflare. |
 | GitHub Actions workflow disabled | GitHub disables cron on new/forked repos | Go to **Actions** tab on GitHub and click *"I understand my workflows, go ahead and enable them"*. |
 | GitHub Actions fails at `git push` (HTTP 403) | Missing write permissions | In GitHub: **Settings** $\to$ **Actions** $\to$ **General** $\to$ **Workflow permissions** $\to$ Select **Read and write permissions**. |
-| Store scraper returns HTTP 403 Forbidden | Site anti-bot protection (e.g. DataDome) | Copy valid session cookie into `cookies.json` locally or configure `COOKIES_JSON` secret in GitHub Actions. |
+| Store scraper returns HTTP 403 Forbidden | Site anti-bot protection (e.g. DataDome) | The tracker alerts on Telegram and continues monitoring other stores (Solution 2). Update the session cookie in `cookies.json` locally or in `COOKIES_JSON` secret. On local environments, use `price-tracker refresh-cookies` (Solution 3) to capture fresh cookies via browser. |
 
