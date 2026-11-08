@@ -288,6 +288,21 @@ Sends a sample HTML test message to verify your Telegram Bot Token and Chat ID:
 price-tracker test-telegram
 ```
 
+#### 8. `price-tracker test-ai` (Test AI Semantic Extraction)
+Tests Google Gemini structured output extraction on a specific item from `bom.json`:
+
+```bash
+price-tracker test-ai cpu_ryzen_7900 [--store Alternate]
+```
+
+#### 9. `price-tracker refresh-cookies` (Local Browser Cookie Refresh)
+Launches a real browser via Chrome DevTools Protocol (CDP) to automatically capture fresh anti-bot session cookies (e.g. DataDome) and update `cookies.json`:
+
+```bash
+price-tracker refresh-cookies [--url https://www.trovaprezzi.it] [--timeout 60]
+```
+*(For complete local/headless server documentation, see [docs/LOCAL_BROWSER_COOKIE_HELPER.md](docs/LOCAL_BROWSER_COOKIE_HELPER.md)).*
+
 ---
 
 ## 🐍 Python SDK & API Reference
