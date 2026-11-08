@@ -624,9 +624,14 @@ def format_telegram_message(eval_result: Dict[str, Any], lang: Optional[str] = N
     return "\n".join(lines)
 
 
-def format_aggregated_telegram_message(alerts: List[Dict[str, Any]], lang: Optional[str] = None) -> str:
+def format_aggregated_telegram_message(
+    alerts: List[Dict[str, Any]],
+    lang: Optional[str] = None,
+    blocked_stores: Optional[Any] = None,
+) -> str:
     """
     Format multiple alert items into a single consolidated Telegram HTML digest.
+    Optionally appends a discreet notice if any stores have expired cookies/anti-bot blocks.
     """
     if not alerts:
         return ""
@@ -681,7 +686,11 @@ def format_aggregated_telegram_message(alerts: List[Dict[str, Any]], lang: Optio
         )
         items_text.append(block)
 
-    return header + "\n".join(items_text)
+    res = header + "\n".join(items_text)
+    if blocked_stores:
+        stores_str = ", ".join(sorted(list(blocked_stores)))
+        res += t("digest_blocked_stores_note", lang=actual_lang, stores=stores_str)
+    return res
 
 
 def send_telegram_notification(
@@ -780,6 +789,7 @@ def run_tracker(
     session = requests.Session()
     results = []
     triggered_alerts: List[Dict[str, Any]] = []
+    blocked_stores: Set[str] = set()
 
     fulfilled_categories: Dict[str, Dict[str, Any]] = {}
     for it in bom_items:
@@ -843,6 +853,8 @@ def run_tracker(
                 print(f"  • {store:12}: €{price:.2f}")
             else:
                 print(f"  • {store:12}: ❌ Error ({err})")
+                if err and ("bot-protection active" in err or "403 Forbidden" in err):
+                    blocked_stores.add(store)
 
         if not detected_prices:
             print("  " + t("no_prices_detected", lang=actual_lang))
@@ -882,15 +894,28 @@ def run_tracker(
         else:
             print("  " + t("no_alert_needed", lang=actual_lang, reason=eval_res['reason']))
 
+    now_ts = datetime.now().timestamp()
+    bot_warnings = history.get("_bot_warnings", {})
+    stores_to_warn = []
+    for st in blocked_stores:
+        last_warn = bot_warnings.get(st, 0)
+        # Notify at most once every 24 hours (86400s) to avoid spam
+        if now_ts - last_warn > 86400:
+            stores_to_warn.append(st)
+
     if triggered_alerts:
         print("\n" + t("alerts_collected", lang=actual_lang, count=len(triggered_alerts)))
+        agg_msg = format_aggregated_telegram_message(
+            triggered_alerts,
+            lang=actual_lang,
+            blocked_stores=blocked_stores,
+        )
         if dry_run:
             print(t("dry_run_preview", lang=actual_lang))
             print("-" * 50)
-            print(format_aggregated_telegram_message(triggered_alerts, lang=actual_lang))
+            print(agg_msg)
             print("-" * 50)
         else:
-            agg_msg = format_aggregated_telegram_message(triggered_alerts, lang=actual_lang)
             success = send_telegram_notification(token, chat_id, agg_msg)
             if success:
                 logger.info("Aggregated Telegram alert successfully sent.")
@@ -898,8 +923,28 @@ def run_tracker(
                     iid = al["item_id"]
                     if iid in history:
                         history[iid]["last_notified_price"] = al["best_price"]
+                for st in blocked_stores:
+                    bot_warnings[st] = now_ts
+                history["_bot_warnings"] = bot_warnings
             else:
                 logger.error("Failed to send aggregated Telegram notification.")
+    elif stores_to_warn:
+        stores_str = ", ".join(sorted(stores_to_warn))
+        warn_msg = t("bot_warning_standalone", lang=actual_lang, stores=stores_str)
+        if dry_run:
+            print(f"\n⚠️ DRY RUN: Avviso sessione/cookie scaduto (store: {stores_str}):")
+            print("-" * 50)
+            print(warn_msg)
+            print("-" * 50)
+        else:
+            success = send_telegram_notification(token, chat_id, warn_msg)
+            if success:
+                logger.info("Bot warning Telegram alert sent for %s", stores_str)
+                for st in stores_to_warn:
+                    bot_warnings[st] = now_ts
+                history["_bot_warnings"] = bot_warnings
+            else:
+                logger.error("Failed to send bot warning Telegram notification.")
     else:
         print("\n" + t("no_alerts_triggered", lang=actual_lang))
 

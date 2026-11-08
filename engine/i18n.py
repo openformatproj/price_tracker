@@ -115,6 +115,16 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "Tutto configurato correttamente! Il bot è pronto a inviarti notifiche sui prezzi dei componenti."
         ),
         "unauthorized_access": "⛔ <b>Accesso non autorizzato.</b> Questo bot è configurato come privato.",
+        "digest_blocked_stores_note": (
+            "\n⚠️ <i>Nota: la sessione o i cookie per <b>{stores}</b> sono scaduti (anti-bot attivo). "
+            "Il monitoraggio sugli altri store procede regolarmente.</i>\n"
+        ),
+        "bot_warning_standalone": (
+            "⚠️ <b>Price Tracker - Sessione Scaduta</b>\n\n"
+            "Il cookie di sessione per <b>{stores}</b> è scaduto o è stato bloccato dal sistema anti-bot (HTTP 403).\n"
+            "ℹ️ <i>Il monitoraggio dei prezzi prosegue normalmente per tutti gli altri store.</i>\n\n"
+            "💡 Per riattivare le offerte di questo store, aggiorna il token in <code>cookies.json</code>."
+        ),
 
         # Purchases & Returns
         "item_not_found_in_bom": "Componente '{item_id}' non trovato nella distinta base.",
@@ -274,6 +284,16 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "Everything is configured correctly! The bot is ready to send price notifications."
         ),
         "unauthorized_access": "⛔ <b>Unauthorized access.</b> This bot is configured as private.",
+        "digest_blocked_stores_note": (
+            "\n⚠️ <i>Note: The session or cookies for <b>{stores}</b> have expired (bot protection active). "
+            "Monitoring for all other stores continues normally.</i>\n"
+        ),
+        "bot_warning_standalone": (
+            "⚠️ <b>Price Tracker - Expired Session</b>\n\n"
+            "The session cookie for <b>{stores}</b> has expired or was blocked by anti-bot protection (HTTP 403).\n"
+            "ℹ️ <i>Price tracking continues normally for all other stores.</i>\n\n"
+            "💡 To resume offers from this store, update the token in <code>cookies.json</code>."
+        ),
 
         # Purchases & Returns
         "item_not_found_in_bom": "Item '{item_id}' not found in BOM.",

@@ -257,6 +257,88 @@ class TestAggregatedTelegramFormatting(unittest.TestCase):
         msg_it = format_aggregated_telegram_message(alerts, lang="it")
         self.assertIn("Trovate <b>2 offerte</b>", msg_it)
 
+    def test_digest_with_blocked_stores_notice(self):
+        alerts = [
+            {
+                "item_name": "Test CPU",
+                "category": "cpu",
+                "option_index": 0,
+                "best_price": 315.0,
+                "target_price": 320.0,
+                "best_store": "Alternate",
+                "best_url": "https://example.com/cpu",
+                "reason": "INITIAL_BELOW_TARGET",
+                "previous_lowest": None,
+            }
+        ]
+        msg_en = format_aggregated_telegram_message(alerts, lang="en", blocked_stores={"Trovaprezzi"})
+        self.assertIn("Trovaprezzi", msg_en)
+        self.assertIn("bot protection active", msg_en)
+
+        msg_it = format_aggregated_telegram_message(alerts, lang="it", blocked_stores={"Trovaprezzi"})
+        self.assertIn("Trovaprezzi", msg_it)
+        self.assertIn("anti-bot attivo", msg_it)
+
+    @patch("engine.tracker.send_telegram_notification")
+    @patch("engine.tracker.requests.Session")
+    def test_standalone_bot_warning_and_rate_limiting(self, mock_session_cls, mock_send_tg):
+        import tempfile
+        import json
+
+        mock_send_tg.return_value = True
+
+        mock_sess = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 403
+        mock_resp.raise_for_status.side_effect = Exception("403")
+        mock_sess.get.return_value = mock_resp
+        mock_session_cls.return_value = mock_sess
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f_bom, \
+             tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f_cfg, \
+             tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f_hist:
+            
+            json.dump([
+                {
+                    "id": "cpu_test",
+                    "name": "CPU Test",
+                    "category": "cpu",
+                    "target_price": 300.0,
+                    "sources": [
+                        {"store": "Trovaprezzi", "url": "https://example.com/cpu", "css_selector": ".price"}
+                    ]
+                }
+            ], f_bom)
+            f_bom.flush()
+
+            json.dump({"bot_token": "token123", "chat_id": "chat123"}, f_cfg)
+            f_cfg.flush()
+
+            json.dump({}, f_hist)
+            f_hist.flush()
+
+            bom_path = f_bom.name
+            cfg_path = f_cfg.name
+            hist_path = f_hist.name
+
+        try:
+            # 1. First run: should trigger standalone bot warning notification
+            from engine.tracker import run_tracker
+            run_tracker(config_path=cfg_path, bom_path=bom_path, history_path=hist_path, dry_run=False)
+            self.assertEqual(mock_send_tg.call_count, 1)
+            sent_msg = mock_send_tg.call_args[0][2]
+            self.assertIn("Trovaprezzi", sent_msg)
+            self.assertIn("HTTP 403", sent_msg)
+
+            # 2. Second run immediately: should be rate-limited (not sent again)
+            mock_send_tg.reset_mock()
+            run_tracker(config_path=cfg_path, bom_path=bom_path, history_path=hist_path, dry_run=False)
+            mock_send_tg.assert_not_called()
+        finally:
+            for p in (bom_path, cfg_path, hist_path):
+                if os.path.exists(p):
+                    os.remove(p)
+
     @patch("engine.tracker.requests.post")
     def test_send_large_message_split(self, mock_post):
         mock_resp = MagicMock()
