@@ -26,12 +26,15 @@ It can track PC builds, 3D printers, camera setups, home lab servers, or any cus
       - [5. `price-tracker ask` (Natural Language Queries)](#5-price-tracker-ask-natural-language-queries)
       - [6. `price-tracker serve` (Local Webhook Server)](#6-price-tracker-serve-local-webhook-server)
       - [7. `price-tracker test-telegram` (Test Credentials)](#7-price-tracker-test-telegram-test-credentials)
+      - [8. `price-tracker test-ai` (Test AI Semantic Extraction)](#8-price-tracker-test-ai-test-ai-semantic-extraction)
+      - [9. `price-tracker refresh-cookies` (Local Browser Cookie Refresh)](#9-price-tracker-refresh-cookies-local-browser-cookie-refresh)
   - [🐍 Python SDK \& API Reference](#-python-sdk--api-reference)
     - [1. Running Price Checks \& Scraping](#1-running-price-checks--scraping)
     - [2. Calculating the Optimal / Cheapest Build](#2-calculating-the-optimal--cheapest-build)
     - [3. Tracking Purchases \& Returns](#3-tracking-purchases--returns)
     - [4. Answering Natural Language Questions](#4-answering-natural-language-questions)
     - [5. Low-Level Web Scraping \& HTML Parsing](#5-low-level-web-scraping--html-parsing)
+    - [6. AI Semantic Scraping \& Self-Healing Extraction](#6-ai-semantic-scraping--self-healing-extraction)
   - [⚙️ Configuration \& Credentials](#️-configuration--credentials)
     - [Telegram Configuration (`telegram_config.json`)](#telegram-configuration-telegram_configjson)
     - [Cookie Configuration (`cookies.json` \& `COOKIES_JSON`)](#cookie-configuration-cookiesjson--cookies_json)
@@ -171,6 +174,7 @@ These options can be passed to the root command or subcommands:
 | `--config <path>` | `telegram_config.json` | Path to Telegram credentials file |
 | `--cookies <path>` | `cookies.json` | Path to anti-bot cookie JSON file |
 | `--lang <it\|en>` | Resolved / `en` | Language for console logs, digests, and bot messages (`it` or `en`) |
+| `--ai` | `False` | Enable Gemini AI semantic extraction fallback for broken or selector-less sources |
 | `-v, --verbose` | `False` | Enable detailed debug logs |
 
 ---
@@ -187,6 +191,9 @@ price-tracker check
 # Dry-run: scrape live prices without modifying history or sending Telegram messages
 price-tracker check --dry-run
 
+# Enable Gemini AI semantic extraction fallback for broken or selector-less sources
+price-tracker check --ai --dry-run
+
 # Force notifications for all items currently below target (even if already notified)
 price-tracker check --force-notify
 
@@ -199,6 +206,9 @@ price-tracker --lang en check --dry-run
 # Custom file locations
 price-tracker --bom /path/to/custom_bom.json --history /path/to/custom_history.json check
 ```
+
+> 🛡️ **Anti-bot Resilience & Expired Cookie Alerting (Solution 2):**  
+> If an anti-bot protected store (such as DataDome on Trovaprezzi) returns `HTTP 403 Forbidden` because a session cookie has expired, the tracker does not fail. It continues monitoring all other unaffected stores, and appends a discreet note to the Telegram digest. If there are no price drops, it sends a standalone alert to Telegram, automatically rate-limited to at most once every 24 hours.
 
 #### 2. `price-tracker status` (Build Progress & Budget)
 Displays completed vs. pending slots, actual money spent, estimated remaining cost at current prices, and difference against target budget:
@@ -289,11 +299,13 @@ price-tracker test-telegram
 ```
 
 #### 8. `price-tracker test-ai` (Test AI Semantic Extraction)
-Tests Google Gemini structured output extraction on a specific item from `bom.json`:
+Tests Google Gemini (`gemini-3.5-flash-lite`) structured output extraction on a specific item from `bom.json`:
 
 ```bash
 price-tracker test-ai cpu_ryzen_7900 [--store Alternate]
 ```
+
+*Displays HTTP fetch status, extracted price, verified merchant/seller, condition, stock availability, and any suggested self-healing CSS selectors.*
 
 #### 9. `price-tracker refresh-cookies` (Local Browser Cookie Refresh)
 Launches a real browser via Chrome DevTools Protocol (CDP) to automatically capture fresh anti-bot session cookies (e.g. DataDome) and update `cookies.json`:
@@ -438,6 +450,29 @@ best_price, err = fetch_source_prices(source, session)
 
 ---
 
+### 6. AI Semantic Scraping & Self-Healing Extraction
+
+```python
+from engine import extract_price_with_ai, prune_html_for_ai
+
+# 1. Prune HTML boilerplate (~95% token reduction for low latency and minimal token usage)
+clean_content = prune_html_for_ai(raw_html, max_chars=15000)
+
+# 2. Extract verified price using Gemini Structured Output schema
+# Rejects accessories, verifies stock and 'new' condition, and returns suggested CSS selector
+price, err, metadata = extract_price_with_ai(
+    item={"id": "cpu_ryzen_7900", "name": "AMD Ryzen 9 7900", "target_price": 305.0},
+    source={"store": "Alternate", "url": "https://..."},
+    html=raw_html,
+)
+
+if price:
+    print(f"Matched Price: €{price:.2f} ({metadata.get('seller_or_store')})")
+    print(f"Suggested Selector: {metadata.get('suggested_css_selector')}")
+```
+
+---
+
 ## ⚙️ Configuration & Credentials
 
 Credentials and settings can be supplied via JSON files or environment variables:
@@ -447,6 +482,7 @@ Credentials and settings can be supplied via JSON files or environment variables
 {
   "bot_token": "123456789:ABCDefghIJKlmnoPQRstuvWXYZ",
   "chat_id": "987654321",
+  "gemini_api_key": "YOUR_GEMINI_API_KEY",
   "lang": "en"
 }
 ```
@@ -480,7 +516,7 @@ Environment variables take precedence over configuration files:
 - `PRICE_TRACKER_LANG`: Default language override (`it` or `en`).
 - `TROVAPREZZI_DATADOME`: Shorthand DataDome cookie value for `trovaprezzi.it`.
 - `COOKIES_JSON`: Raw JSON string with multi-domain cookie mappings (ideal for CI/CD secrets).
-- `GEMINI_API_KEY`: Google AI Studio API key for enhanced conversational replies.
+- `GEMINI_API_KEY`: Google AI Studio API key for AI semantic price extraction and natural language bot replies.
 
 ---
 
