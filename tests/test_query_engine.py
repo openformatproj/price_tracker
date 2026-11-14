@@ -165,6 +165,67 @@ class TestQueryEngine(unittest.TestCase):
         expected_total = 860.0 + 315.0 + 36.60 + 143.89 + 200.0 + 105.0 + 85.0
         self.assertAlmostEqual(build["total_price"], expected_total, places=2)
 
+    def test_constrained_build_selection(self):
+        # 1. Force Phantom Spirit (instead of cheaper Peerless Assassin)
+        build_phantom = calculate_cheapest_build(
+            self.mock_bom, self.mock_history, constraints={"cooler": "cooler_phantom_spirit"}
+        )
+        selected_ids = [item["item"]["id"] for item in build_phantom["items"]]
+        self.assertIn("cooler_phantom_spirit", selected_ids)
+        self.assertNotIn("cooler_peerless_assassin", selected_ids)
+        # Difference should be exactly 50.0 - 36.60 = 13.40
+        self.assertAlmostEqual(build_phantom["total_price"], 1745.49 + 13.40, places=2)
+
+        # 2. Force Tomahawk by keyword substring
+        build_tomahawk = calculate_cheapest_build(
+            self.mock_bom, self.mock_history, constraints={"mobo": "tomahawk"}
+        )
+        selected_ids_2 = [item["item"]["id"] for item in build_tomahawk["items"]]
+        self.assertIn("mobo_tomahawk", selected_ids_2)
+        self.assertNotIn("mobo_tuf", selected_ids_2)
+
+    def test_classify_and_answer_with_constraints(self):
+        # 1. Italian constrained build query
+        reply_it = classify_and_answer_local(
+            "qual è la configurazione più conveniente con dissipatore phantom spirit?",
+            self.mock_bom,
+            self.mock_history,
+            lang="it",
+        )
+        self.assertIn("Configurazione Più Conveniente", reply_it)
+        self.assertIn("Phantom Spirit", reply_it)
+        self.assertNotIn("Peerless Assassin", reply_it)
+
+        # 2. English constrained build query
+        reply_en = classify_and_answer_local(
+            "what is the cheapest build with tomahawk?",
+            self.mock_bom,
+            self.mock_history,
+        )
+        self.assertIn("Optimal Build Configuration", reply_en)
+        self.assertIn("Tomahawk", reply_en)
+        self.assertNotIn("ASUS TUF", reply_en)
+
+        # 3. Constraint not found in BOM
+        reply_not_found = classify_and_answer_local(
+            "qual è la configurazione più conveniente con rtx 4090?",
+            self.mock_bom,
+            self.mock_history,
+            lang="it",
+        )
+        self.assertIn("Nessun componente trovato per il vincolo", reply_not_found)
+        self.assertIn("rtx 4090", reply_not_found)
+
+        # 4. Slash command with constraint: /build tomahawk
+        reply_cmd = classify_and_answer_local(
+            "/build tomahawk",
+            self.mock_bom,
+            self.mock_history,
+            lang="en",
+        )
+        self.assertIn("Optimal Build Configuration", reply_cmd)
+        self.assertIn("Tomahawk", reply_cmd)
+
     def test_format_build_reply(self):
         build = calculate_cheapest_build(self.mock_bom, self.mock_history)
         reply = format_build_reply(build)
