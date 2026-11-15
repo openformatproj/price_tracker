@@ -68,9 +68,11 @@ def calculate_cheapest_build(
     """
     Calculate the cheapest complete assembly build combining whichever interchangeable
     options currently offer the lowest price across all distinct categories in the BOM.
-    If a category contains an item marked as purchased, it locks that option.
-    If constraints is provided (dict mapping category -> item_id, option_index, or keyword string),
-    it restricts that category to the option matching the constraint.
+    If a category contains an item marked as purchased, it locks that option (Exception A).
+    If constraints is provided, it restricts matching categories to candidate options matching the constraint (Exception B).
+    All active candidate options across unfulfilled categories MUST have a determinable current price
+    (last_checked_price is not None and > 0). If any active candidate lacks a current price, an error
+    is returned listing the items for which the current price cannot be determined.
     """
     categories = get_bom_categories(bom)
     by_category: Dict[str, List[Dict[str, Any]]] = {cat: [] for cat in categories}
@@ -78,45 +80,10 @@ def calculate_cheapest_build(
     for item in bom:
         cat = item.get("category", "")
         if cat in by_category:
-            rec = history.get(item["id"], {})
-            last_price = rec.get("last_checked_price")
-            lowest_price = rec.get("lowest_price")
-            target_price = float(item.get("target_price", 0.0))
-            is_purchased = bool(rec.get("purchased"))
-
-            if is_purchased and rec.get("purchase_price") is not None:
-                effective_price = float(rec["purchase_price"])
-                price_type = "purchased"
-                store = "Acquistato"
-                url = ""
-            elif last_price is not None:
-                effective_price = float(last_price)
-                price_type = "checked"
-                store = rec.get("last_checked_source", "Store")
-                url = rec.get("last_checked_url", "")
-            elif lowest_price is not None:
-                effective_price = float(lowest_price)
-                price_type = "historical_low"
-                store = rec.get("lowest_price_source", "Store")
-                url = rec.get("lowest_price_url", "")
-            else:
-                effective_price = target_price
-                price_type = "target_fallback"
-                store = "Target"
-                url = item["sources"][0]["url"] if item.get("sources") else ""
-
-            by_category[cat].append({
-                "item": item,
-                "effective_price": effective_price,
-                "price_type": price_type,
-                "store": store,
-                "url": url,
-                "target_price": target_price,
-                "is_purchased": is_purchased,
-                "last_checked_date": rec.get("last_checked_date"),
-            })
+            by_category[cat].append(item)
 
     selected_build: List[Dict[str, Any]] = []
+    missing_price_items: List[Dict[str, Any]] = []
     total_effective = 0.0
     total_target = 0.0
 
@@ -125,18 +92,44 @@ def calculate_cheapest_build(
         if not options:
             continue
 
-        # Apply constraint for this category if provided
+        # Exception A: Check if any item in this category is already purchased
+        purchased_item = None
+        for it in options:
+            rec = history.get(it["id"], {})
+            if rec.get("purchased"):
+                purchased_item = it
+                break
+
+        if purchased_item is not None:
+            rec = history.get(purchased_item["id"], {})
+            purchase_price = float(rec.get("purchase_price") or purchased_item.get("target_price", 0.0))
+            target_price = float(purchased_item.get("target_price", 0.0))
+            selected_build.append({
+                "item": purchased_item,
+                "effective_price": purchase_price,
+                "price_type": "purchased",
+                "store": "Acquistato",
+                "url": "",
+                "target_price": target_price,
+                "is_purchased": True,
+                "last_checked_date": rec.get("last_checked_date"),
+            })
+            total_effective += purchase_price
+            total_target += target_price
+            continue
+
+        # Exception B: Filter options by constraint for this category if present
         constraint = constraints.get(cat) if constraints else None
+        candidate_options = options
         if constraint is not None:
             constrained_options = []
-            for opt in options:
-                it = opt["item"]
+            for it in options:
                 # 1. Exact item id match
                 if isinstance(constraint, str) and it.get("id") == constraint:
-                    constrained_options.append(opt)
+                    constrained_options.append(it)
                 # 2. Option index match
                 elif isinstance(constraint, int) and it.get("option_index") == constraint:
-                    constrained_options.append(opt)
+                    constrained_options.append(it)
                 # 3. Keyword / substring match in name, id, or description
                 elif isinstance(constraint, str):
                     c_low = constraint.lower().strip()
@@ -144,20 +137,47 @@ def calculate_cheapest_build(
                     it_id = it.get("id", "").lower()
                     it_desc = it.get("description", "").lower()
                     if c_low in it_name or c_low in it_id or c_low in it_desc:
-                        constrained_options.append(opt)
+                        constrained_options.append(it)
             if constrained_options:
-                options = constrained_options
+                candidate_options = constrained_options
 
-        purchased_opt = next((o for o in options if o.get("is_purchased")), None)
-        if purchased_opt:
-            best_option = purchased_opt
-        else:
-            options.sort(key=lambda x: x["effective_price"])
-            best_option = options[0]
+        # Check current price for all active candidate options in this category
+        category_candidates_evaluated: List[Dict[str, Any]] = []
+        for it in candidate_options:
+            rec = history.get(it["id"], {})
+            last_price = rec.get("last_checked_price")
+            if last_price is None or float(last_price) <= 0:
+                missing_price_items.append({
+                    "item": it,
+                    "category": cat,
+                })
+            else:
+                target_price = float(it.get("target_price", 0.0))
+                category_candidates_evaluated.append({
+                    "item": it,
+                    "effective_price": float(last_price),
+                    "price_type": "checked",
+                    "store": rec.get("last_checked_source", "Store"),
+                    "url": rec.get("last_checked_url", ""),
+                    "target_price": target_price,
+                    "is_purchased": False,
+                    "last_checked_date": rec.get("last_checked_date"),
+                })
 
-        selected_build.append(best_option)
-        total_effective += best_option["effective_price"]
-        total_target += best_option["target_price"]
+        if category_candidates_evaluated:
+            category_candidates_evaluated.sort(key=lambda x: x["effective_price"])
+            best_opt = category_candidates_evaluated[0]
+            selected_build.append(best_opt)
+            total_effective += best_opt["effective_price"]
+            total_target += best_opt["target_price"]
+
+    if missing_price_items:
+        return {
+            "error": "missing_current_prices",
+            "missing_items": missing_price_items,
+            "categories": categories,
+            "constraints": constraints,
+        }
 
     return {
         "items": selected_build,
@@ -176,6 +196,20 @@ def format_build_reply(
 ) -> str:
     """Format cheapest build result into rich Telegram HTML."""
     actual_lang = resolve_lang(lang)
+
+    if build_data.get("error") == "missing_current_prices":
+        missing_items = build_data.get("missing_items", [])
+        opt_abbr = t("opt_abbr", lang=actual_lang)
+        lines = [t("build_error_missing_prices_header", lang=actual_lang)]
+        for entry in missing_items:
+            it = entry["item"]
+            cat = entry.get("category", it.get("category", ""))
+            opt_idx = it.get("option_index", 0)
+            label = it.get("category_label") or get_category_label(cat, lang=actual_lang)
+            lines.append(f"• <b>{it['name']}</b> (<i>{label} - {opt_abbr} {opt_idx}</i>)")
+        lines.append("\n" + t("build_error_missing_prices_footer", lang=actual_lang))
+        return "\n".join(lines)
+
     items = build_data.get("items", [])
     total_price = build_data.get("total_price", 0.0)
     total_target = build_data.get("total_target", 0.0)
@@ -592,11 +626,11 @@ def classify_and_answer_local(
                 constraint_text = q[7:].strip()
             else:
                 m_c = re.search(
-                    r"(?:con|with|includendo|having|solo\s+con|only\s+with|usando|using)\s+([^?.,;]+)",
+                    r"(?:con|with|includendo|having|solo\s+con|only\s+with|usando|using)\s+([^?;\n]+)",
                     q,
                 )
                 if m_c:
-                    constraint_text = m_c.group(1).strip()
+                    constraint_text = m_c.group(1).rstrip(".? ").strip()
 
             if constraint_text:
                 parts = re.split(r"\s+(?:e|and)\s+|,\s*", constraint_text)
@@ -669,8 +703,17 @@ def classify_and_answer_local(
     ]
     for pattern in target_budget_patterns:
         if re.search(pattern, q):
-            build_data = calculate_cheapest_build(bom, history)
-            return t("target_budget_reply", lang=actual_lang, total=build_data['total_target'])
+            total_target = 0.0
+            categories = get_bom_categories(bom)
+            for cat in categories:
+                cat_items = [it for it in bom if it.get("category") == cat]
+                purchased_it = next((it for it in cat_items if history.get(it["id"], {}).get("purchased")), None)
+                if purchased_it:
+                    rec = history.get(purchased_it["id"], {})
+                    total_target += float(rec.get("purchase_price") or purchased_it.get("target_price", 0.0))
+                elif cat_items:
+                    total_target += min(float(it.get("target_price", 0.0)) for it in cat_items)
+            return t("target_budget_reply", lang=actual_lang, total=total_target)
 
     # 7. Search specific item or category
     matches = search_items(query, bom, history)
@@ -721,8 +764,11 @@ def answer_with_gemini(
             "Answer user questions in English using EXCLUSIVELY the provided context data.\n"
             "If the user asks about the generic cheapest configuration or total cost without specific constraints, "
             "use the data from 'cheapest_calculated_build'.\n"
+            "If 'cheapest_calculated_build' reports an error ('missing_current_prices'), or if any candidate component "
+            "(neither purchased nor excluded by constraints) is missing a current price ('last_checked_price' is null or missing), "
+            "you MUST state that it is not possible to determine the cheapest configuration at this moment, explicitly listing the components whose current price is unknown.\n"
             "If the user specifies constraints, preferences, or component choices (e.g. 'with 16GB GPU' or 'with ASUS motherboard'), "
-            "pick the component satisfying the constraint for that category and choose the cheapest available options for the other categories, "
+            "pick the component satisfying the constraint for that category and choose the cheapest available options with known current prices for the other categories, "
             "calculating the updated total and specifying each selected component.\n"
             "Use HTML formatting compatible with Telegram: <b>bold</b>, <i>italic</i>, <code>code</code>, <a href=\"URL\">link</a>.\n"
             "Be clear, concise, and direct."
@@ -733,8 +779,11 @@ def answer_with_gemini(
             "Rispondi alle domande dell'utente in italiano usando ESCLUSIVAMENTE i dati forniti nel contesto.\n"
             "Se l'utente chiede della configurazione più conveniente generica (senza vincoli), "
             "usa i dati di 'cheapest_calculated_build'.\n"
+            "Se 'cheapest_calculated_build' segnala l'errore 'missing_current_prices', o se uno o più componenti candidati "
+            "(non acquistati e non esclusi da vincoli) non hanno un prezzo corrente ('last_checked_price' nullo o mancante), "
+            "DEVI segnalare all'utente che è impossibile determinare con certezza la configurazione più conveniente in questo momento, elencando esplicitamente i componenti di cui non si conosce il prezzo corrente.\n"
             "Se l'utente specifica vincoli, preferenze o scelte di componenti (ad es. 'con GPU da 16 GB' o 'con scheda madre ASUS'), "
-            "seleziona il componente corrispondente al vincolo per quella categoria e scegli le opzioni più economiche per tutte le altre, "
+            "seleziona il componente corrispondente al vincolo per quella categoria e scegli le opzioni con prezzo corrente noto più economiche per tutte le altre, "
             "calcolando il totale aggiornato e specificando ciascun componente scelto.\n"
             "Usa formattazione HTML compatibile con Telegram: <b>grassetto</b>, <i>corsivo</i>, <code>codice</code>, <a href=\"URL\">link</a>.\n"
             "Sii chiaro, conciso e diretto."

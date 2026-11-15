@@ -59,6 +59,8 @@ const MESSAGES = {
     ),
     build_title: "🖥️ <b>Current Most Cost-Effective Configuration</b>\n<i>Optimal combination of interchangeable options:</i>\n",
     build_title_constrained: (c) => `🖥️ <b>Optimal Build Configuration</b> (<i>constraint: ${c}</i>)\n<i>Optimal combination satisfying constraint:</i>\n`,
+    build_error_missing_header: "⚠️ <b>Unable to determine the most cost-effective configuration at this moment.</b>\n\nCurrent prices could not be detected for the following components:\n",
+    build_error_missing_footer: "💡 <i>Please verify source links or refresh store cookies before recalculating the build.</i>",
     constraint_not_found: (c) => `⚠️ No components found matching constraint '<b>${c}</b>'.`,
     opt_label: "Opt.",
     purchased_badge: "Purchased!",
@@ -136,6 +138,8 @@ const MESSAGES = {
     ),
     build_title: "🖥️ <b>Configurazione Più Conveniente Attuale</b>\n<i>Combinazione ottimale delle opzioni intercambiabili:</i>\n",
     build_title_constrained: (c) => `🖥️ <b>Configurazione Più Conveniente</b> (<i>vincolo: ${c}</i>)\n<i>Combinazione ottimale rispettando il vincolo:</i>\n`,
+    build_error_missing_header: "⚠️ <b>Impossibile determinare la configurazione più conveniente in questo momento.</b>\n\nNon è stato possibile rilevare il prezzo corrente per i seguenti componenti:\n",
+    build_error_missing_footer: "💡 <i>Verifica i link delle sorgenti o aggiorna i cookie dei relativi store prima di ricalcolare la configurazione.</i>",
     constraint_not_found: (c) => `⚠️ Nessun componente trovato per il vincolo '<b>${c}</b>'.`,
     opt_label: "Opz.",
     purchased_badge: "Acquistato!",
@@ -574,6 +578,9 @@ function handleStateMutation(userText, bom, history, config, lang) {
 /**
  * Calculate the cheapest combination across all BOM categories.
  * Supports optional constraints (mapping category -> item_id or substring).
+ * Strict: Requires valid current price for all active candidate options.
+ * Exception A: Category contains a purchased item -> locked, exempt from current price check.
+ * Exception B: Options excluded by constraint -> exempt from current price check.
  */
 function calculateCheapestBuild(bom, history, lang = "en", constraints = null) {
   const msg = getMsg(lang);
@@ -584,77 +591,100 @@ function calculateCheapestBuild(bom, history, lang = "en", constraints = null) {
   }
 
   for (const item of bom) {
-    const cat = item.category;
-    if (byCategory[cat]) {
-      const rec = history[item.id] || {};
-      const targetPrice = parseFloat(item.target_price || 0);
-      const isPurchased = Boolean(rec.purchased);
-      let price = targetPrice;
-      let store = msg.store_target;
-      let url = item.sources && item.sources[0] ? item.sources[0].url : "";
-      let priceType = "target";
-
-      if (isPurchased && rec.purchase_price !== undefined) {
-        price = parseFloat(rec.purchase_price);
-        store = msg.store_purchased;
-        url = "";
-        priceType = "purchased";
-      } else if (rec.last_checked_price !== undefined && rec.last_checked_price !== null) {
-        price = parseFloat(rec.last_checked_price);
-        store = rec.last_checked_source || "Store";
-        url = rec.last_checked_url || "";
-        priceType = "checked";
-      } else if (rec.lowest_price !== undefined && rec.lowest_price !== null) {
-        price = parseFloat(rec.lowest_price);
-        store = rec.lowest_price_source || "Store";
-        url = rec.lowest_price_url || "";
-        priceType = "lowest";
-      }
-
-      byCategory[cat].push({
-        item,
-        price,
-        store,
-        url,
-        targetPrice,
-        priceType,
-        isPurchased,
-      });
+    if (byCategory[item.category]) {
+      byCategory[item.category].push(item);
     }
   }
 
   const selectedBuild = [];
+  const missingItems = [];
   let totalPrice = 0;
   let totalTarget = 0;
 
   for (const cat of categories) {
-    let options = byCategory[cat] || [];
+    const options = byCategory[cat] || [];
     if (options.length === 0) continue;
 
+    // Exception A: Category contains a purchased item
+    const purchasedItem = options.find(it => history[it.id]?.purchased);
+    if (purchasedItem) {
+      const rec = history[purchasedItem.id] || {};
+      const purchasePrice = parseFloat(rec.purchase_price ?? purchasedItem.target_price ?? 0);
+      const targetPrice = parseFloat(purchasedItem.target_price || 0);
+      selectedBuild.push({
+        item: purchasedItem,
+        price: purchasePrice,
+        store: msg.store_purchased,
+        url: "",
+        targetPrice,
+        priceType: "purchased",
+        isPurchased: true,
+      });
+      totalPrice += purchasePrice;
+      totalTarget += targetPrice;
+      continue;
+    }
+
+    // Exception B: Filter options by constraint
+    let candidateOptions = options;
     const constraint = constraints ? constraints[cat] : null;
     if (constraint !== null && constraint !== undefined) {
-      const constrainedOptions = options.filter(opt => {
-        const it = opt.item;
+      const constrainedOptions = options.filter(it => {
         if (typeof constraint === "string" && it.id === constraint) return true;
         if (typeof constraint === "number" && it.option_index === constraint) return true;
         if (typeof constraint === "string") {
           const cLower = constraint.toLowerCase();
           return ((it.name || "").toLowerCase().includes(cLower)) ||
-                 ((it.id || "").toLowerCase().includes(cLower));
+                 ((it.id || "").toLowerCase().includes(cLower)) ||
+                 ((it.description || "").toLowerCase().includes(cLower));
         }
         return false;
       });
       if (constrainedOptions.length > 0) {
-        options = constrainedOptions;
+        candidateOptions = constrainedOptions;
       }
     }
 
-    const purchasedOpt = options.find(o => o.isPurchased);
-    const chosen = purchasedOpt || options.sort((a, b) => a.price - b.price)[0];
+    // Check current prices for all active candidates in this category
+    const categoryCandidates = [];
+    for (const it of candidateOptions) {
+      const rec = history[it.id] || {};
+      const lastPrice = rec.last_checked_price;
+      if (lastPrice === undefined || lastPrice === null || parseFloat(lastPrice) <= 0) {
+        missingItems.push({
+          item: it,
+          category: cat,
+        });
+      } else {
+        const targetPrice = parseFloat(it.target_price || 0);
+        categoryCandidates.push({
+          item: it,
+          price: parseFloat(lastPrice),
+          store: rec.last_checked_source || "Store",
+          url: rec.last_checked_url || "",
+          targetPrice,
+          priceType: "checked",
+          isPurchased: false,
+        });
+      }
+    }
 
-    selectedBuild.push(chosen);
-    totalPrice += chosen.price;
-    totalTarget += chosen.targetPrice;
+    if (categoryCandidates.length > 0) {
+      categoryCandidates.sort((a, b) => a.price - b.price);
+      const chosen = categoryCandidates[0];
+      selectedBuild.push(chosen);
+      totalPrice += chosen.price;
+      totalTarget += chosen.targetPrice;
+    }
+  }
+
+  if (missingItems.length > 0) {
+    return {
+      error: "missing_current_prices",
+      missingItems,
+      categories,
+      constraints,
+    };
   }
 
   return {
@@ -671,6 +701,21 @@ function calculateCheapestBuild(bom, history, lang = "en", constraints = null) {
  */
 function formatBuildReply(build, config, lang, constraintLabel = null) {
   const msg = getMsg(lang);
+
+  if (build.error === "missing_current_prices") {
+    const missing = build.missingItems || [];
+    const lines = [msg.build_error_missing_header];
+    for (const entry of missing) {
+      const item = entry.item;
+      const cat = entry.category || item.category;
+      const optIdx = item.option_index !== undefined ? item.option_index : 0;
+      const label = getCategoryLabel(cat, config, item);
+      lines.push(`• <b>${item.name}</b> (<i>${label} - ${msg.opt_label} ${optIdx}</i>)`);
+    }
+    lines.push("\n" + msg.build_error_missing_footer);
+    return lines.join("\n");
+  }
+
   const lines = [
     constraintLabel ? msg.build_title_constrained(constraintLabel) : msg.build_title
   ];
@@ -953,8 +998,8 @@ function resolveLocalQuery(query, bom, history, config, lang) {
         const m = q.match(/^\/build\s+(.+)/i);
         if (m) constraintText = m[1].trim();
       } else {
-        const m = q.match(/(?:con|with|includendo|having|solo\s+con|only\s+with|usando|using)\s+([^?.,;]+)/i);
-        if (m) constraintText = m[1].trim();
+        const m = q.match(/(?:con|with|includendo|having|solo\s+con|only\s+with|usando|using)\s+([^?;\n]+)/i);
+        if (m) constraintText = m[1].replace(/[.?]+$/, "").trim();
       }
 
       if (constraintText) {
@@ -1059,8 +1104,18 @@ function resolveLocalQuery(query, bom, history, config, lang) {
   ];
   for (const pat of targetBudgetPatterns) {
     if (pat.test(q)) {
-      const build = calculateCheapestBuild(bom, history, lang);
-      return msg.target_budget_reply(build.totalTarget);
+      const categories = getBomCategories(bom);
+      let totalTarget = 0;
+      for (const cat of categories) {
+        const catItems = bom.filter(it => it.category === cat);
+        const purchased = catItems.find(it => history[it.id]?.purchased);
+        if (purchased) {
+          totalTarget += parseFloat(history[purchased.id]?.purchase_price ?? purchased.target_price ?? 0);
+        } else if (catItems.length > 0) {
+          totalTarget += Math.min(...catItems.map(it => parseFloat(it.target_price || 0)));
+        }
+      }
+      return msg.target_budget_reply(totalTarget);
     }
   }
 
@@ -1101,8 +1156,9 @@ async function queryGemini(userQuery, bom, history, apiKey, lang) {
       "Sei un assistente AI specializzato nel monitoraggio dei prezzi di distinte base / assemblaggi.\n" +
       "Rispondi alle domande dell'utente in italiano usando ESCLUSIVAMENTE i dati forniti nel contesto.\n" +
       "Se l'utente chiede della configurazione più conveniente generica (senza vincoli), usa i dati di 'cheapest_calculated_build'.\n" +
+      "Se 'cheapest_calculated_build' segnala l'errore 'missing_current_prices', o se uno o più componenti candidati (non acquistati e non esclusi da vincoli) non hanno un prezzo corrente ('last_checked_price' nullo o mancante), DEVI segnalare all'utente che è impossibile determinare con certezza la configurazione più conveniente in questo momento, elencando esplicitamente i componenti di cui non si conosce il prezzo corrente.\n" +
       "Se l'utente specifica vincoli, preferenze o componenti specifici (es. 'con GPU da 16GB' o 'con scheda madre ASUS'), " +
-      "seleziona per quella categoria il componente richiesto e per le altre categorie le opzioni più economiche disponibili, " +
+      "seleziona per quella categoria il componente richiesto e per le altre categorie le opzioni con prezzo corrente noto più economiche disponibili, " +
       "calcolando il totale aggiornato e specificando ciascun componente scelto.\n" +
       "Usa formattazione HTML Telegram: <b>grassetto</b>, <i>corsivo</i>, <code>codice</code>, <a href=\"URL\">link</a>.\n" +
       "Sii chiaro, conciso e sintetico."
@@ -1111,8 +1167,9 @@ async function queryGemini(userQuery, bom, history, apiKey, lang) {
       "You are an AI assistant specialized in price tracking and BOM configuration optimization.\n" +
       "Answer user questions in English using EXCLUSIVELY the provided context data.\n" +
       "If the user asks about the generic cheapest configuration without specific constraints, use the data from 'cheapest_calculated_build'.\n" +
+      "If 'cheapest_calculated_build' reports an error ('missing_current_prices'), or if any candidate component (neither purchased nor excluded by constraints) is missing a current price ('last_checked_price' is null or missing), you MUST state that it is not possible to determine the cheapest configuration at this moment, explicitly listing the components whose current price is unknown.\n" +
       "If the user specifies constraints, preferences, or component choices (e.g. 'with 16GB GPU' or 'with ASUS motherboard'), " +
-      "pick the component satisfying the constraint for that category and choose the cheapest available options for the other categories, " +
+      "pick the component satisfying the constraint for that category and choose the cheapest available options with known current prices for the other categories, " +
       "calculating the updated total and specifying each selected component.\n" +
       "Use Telegram HTML formatting: <b>bold</b>, <i>italic</i>, <code>code</code>, <a href=\"URL\">link</a>.\n" +
       "Be clear, concise, and direct."

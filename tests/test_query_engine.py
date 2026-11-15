@@ -226,6 +226,90 @@ class TestQueryEngine(unittest.TestCase):
         self.assertIn("Optimal Build Configuration", reply_cmd)
         self.assertIn("Tomahawk", reply_cmd)
 
+    def test_missing_current_price_error(self):
+        # 1. When an active candidate item lacks a current price, build returns error
+        history_missing = json.loads(json.dumps(self.mock_history))
+        del history_missing["mobo_tomahawk"]["last_checked_price"]
+
+        build = calculate_cheapest_build(self.mock_bom, history_missing)
+        self.assertEqual(build.get("error"), "missing_current_prices")
+        missing_ids = [m["item"]["id"] for m in build.get("missing_items", [])]
+        self.assertIn("mobo_tomahawk", missing_ids)
+
+        # 2. format_build_reply formats localized error
+        reply_en = format_build_reply(build, lang="en")
+        self.assertIn("Unable to determine the most cost-effective configuration at this moment", reply_en)
+        self.assertIn("MSI MAG B650 Tomahawk WiFi", reply_en)
+
+        reply_it = format_build_reply(build, lang="it")
+        self.assertIn("Impossibile determinare la configurazione più conveniente in questo momento", reply_it)
+        self.assertIn("MSI MAG B650 Tomahawk WiFi", reply_it)
+
+        # 3. classify_and_answer_local surfaces this error
+        reply_nl_it = classify_and_answer_local(
+            "qual è la configurazione più conveniente?",
+            self.mock_bom,
+            history_missing,
+            lang="it",
+        )
+        self.assertIn("Impossibile determinare la configurazione più conveniente in questo momento", reply_nl_it)
+        self.assertIn("MSI MAG B650 Tomahawk WiFi", reply_nl_it)
+
+    def test_missing_price_exempt_when_constrained(self):
+        # If unpriced mobo_tomahawk is excluded by constraint, build calculation succeeds!
+        history_missing = json.loads(json.dumps(self.mock_history))
+        del history_missing["mobo_tomahawk"]["last_checked_price"]
+
+        build_constrained = calculate_cheapest_build(
+            self.mock_bom, history_missing, constraints={"mobo": "mobo_tuf"}
+        )
+        self.assertNotIn("error", build_constrained)
+        self.assertIn("items", build_constrained)
+        selected_ids = [m["item"]["id"] for m in build_constrained["items"]]
+        self.assertIn("mobo_tuf", selected_ids)
+        self.assertNotIn("mobo_tomahawk", selected_ids)
+
+        # Natural language with constraint
+        reply_it = classify_and_answer_local(
+            "qual è la configurazione più conveniente con scheda madre tuf?",
+            self.mock_bom,
+            history_missing,
+            lang="it",
+        )
+        self.assertIn("Configurazione Più Conveniente", reply_it)
+        self.assertIn("ASUS TUF", reply_it)
+        self.assertNotIn("Impossibile determinare", reply_it)
+
+    def test_missing_price_exempt_when_purchased(self):
+        # If category is already fulfilled by a purchased item, unpriced alternative does not block build
+        history_missing = json.loads(json.dumps(self.mock_history))
+        del history_missing["mobo_tomahawk"]["last_checked_price"]
+        del history_missing["mobo_tuf"]["last_checked_price"]
+        history_missing["mobo_tuf"]["purchased"] = True
+        history_missing["mobo_tuf"]["purchase_price"] = 143.89
+
+        build = calculate_cheapest_build(self.mock_bom, history_missing)
+        self.assertNotIn("error", build)
+        self.assertIn("items", build)
+        selected_ids = [m["item"]["id"] for m in build["items"]]
+        self.assertIn("mobo_tuf", selected_ids)
+
+    def test_multiple_missing_prices_listed(self):
+        # Multiple missing items across different categories are all listed
+        history_missing = json.loads(json.dumps(self.mock_history))
+        del history_missing["cpu_ryzen_7900"]["last_checked_price"]
+        del history_missing["mobo_tomahawk"]["last_checked_price"]
+
+        build = calculate_cheapest_build(self.mock_bom, history_missing)
+        self.assertEqual(build.get("error"), "missing_current_prices")
+        missing_ids = [m["item"]["id"] for m in build.get("missing_items", [])]
+        self.assertIn("cpu_ryzen_7900", missing_ids)
+        self.assertIn("mobo_tomahawk", missing_ids)
+
+        reply = format_build_reply(build, lang="it")
+        self.assertIn("Ryzen 9 7900", reply)
+        self.assertIn("MSI MAG B650 Tomahawk WiFi", reply)
+
     def test_format_build_reply(self):
         build = calculate_cheapest_build(self.mock_bom, self.mock_history)
         reply = format_build_reply(build)
