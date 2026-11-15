@@ -82,14 +82,14 @@ def refresh_browser_cookies(
     Launch Chrome, navigate to target URL, and poll for target_cookie via CDP.
     Returns: (success, cookie_value, error_message)
     """
+    browser_bin = find_browser_executable()
+    if not browser_bin:
+        return False, None, "No Chrome or Chromium browser executable found on system."
+
     try:
         import websockets.sync.client
     except ImportError:
         return False, None, "The 'websockets' library is required. Install with: pip install websockets"
-
-    browser_bin = find_browser_executable()
-    if not browser_bin:
-        return False, None, "No Chrome or Chromium browser executable found on system."
 
     temp_profile = tempfile.mkdtemp(prefix="pt_chrome_")
 

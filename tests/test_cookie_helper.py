@@ -90,9 +90,14 @@ class TestCookieHelper(unittest.TestCase):
             }
         })
 
-        with patch("websockets.sync.client.connect") as mock_connect:
-            mock_connect.return_value.__enter__.return_value = mock_ws
+        mock_ws_mod = MagicMock()
+        mock_ws_mod.connect.return_value.__enter__.return_value = mock_ws
+        mock_sync_mod = MagicMock()
+        mock_sync_mod.client = mock_ws_mod
+        mock_parent = MagicMock()
+        mock_parent.sync = mock_sync_mod
 
+        with patch.dict("sys.modules", {"websockets": mock_parent, "websockets.sync": mock_sync_mod, "websockets.sync.client": mock_ws_mod}):
             ok, val, err = refresh_browser_cookies(
                 url="https://www.trovaprezzi.it",
                 target_domain="trovaprezzi.it",
