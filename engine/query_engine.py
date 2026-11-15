@@ -63,11 +63,14 @@ def load_engine_data(
 def calculate_cheapest_build(
     bom: List[Dict[str, Any]],
     history: Dict[str, Any],
+    constraints: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Calculate the cheapest complete assembly build combining whichever interchangeable
     options currently offer the lowest price across all distinct categories in the BOM.
     If a category contains an item marked as purchased, it locks that option.
+    If constraints is provided (dict mapping category -> item_id, option_index, or keyword string),
+    it restricts that category to the option matching the constraint.
     """
     categories = get_bom_categories(bom)
     by_category: Dict[str, List[Dict[str, Any]]] = {cat: [] for cat in categories}
@@ -121,6 +124,30 @@ def calculate_cheapest_build(
         options = by_category.get(cat, [])
         if not options:
             continue
+
+        # Apply constraint for this category if provided
+        constraint = constraints.get(cat) if constraints else None
+        if constraint is not None:
+            constrained_options = []
+            for opt in options:
+                it = opt["item"]
+                # 1. Exact item id match
+                if isinstance(constraint, str) and it.get("id") == constraint:
+                    constrained_options.append(opt)
+                # 2. Option index match
+                elif isinstance(constraint, int) and it.get("option_index") == constraint:
+                    constrained_options.append(opt)
+                # 3. Keyword / substring match in name, id, or description
+                elif isinstance(constraint, str):
+                    c_low = constraint.lower().strip()
+                    it_name = it.get("name", "").lower()
+                    it_id = it.get("id", "").lower()
+                    it_desc = it.get("description", "").lower()
+                    if c_low in it_name or c_low in it_id or c_low in it_desc:
+                        constrained_options.append(opt)
+            if constrained_options:
+                options = constrained_options
+
         purchased_opt = next((o for o in options if o.get("is_purchased")), None)
         if purchased_opt:
             best_option = purchased_opt
@@ -138,10 +165,15 @@ def calculate_cheapest_build(
         "total_target": total_target,
         "diff_vs_target": total_effective - total_target,
         "categories": categories,
+        "constraints": constraints,
     }
 
 
-def format_build_reply(build_data: Dict[str, Any], lang: Optional[str] = None) -> str:
+def format_build_reply(
+    build_data: Dict[str, Any],
+    lang: Optional[str] = None,
+    constraint_label: Optional[str] = None,
+) -> str:
     """Format cheapest build result into rich Telegram HTML."""
     actual_lang = resolve_lang(lang)
     items = build_data.get("items", [])
@@ -149,9 +181,13 @@ def format_build_reply(build_data: Dict[str, Any], lang: Optional[str] = None) -
     total_target = build_data.get("total_target", 0.0)
     diff = build_data.get("diff_vs_target", 0.0)
 
-    lines = [
-        t("build_reply_title", lang=actual_lang).rstrip("\n")
-    ]
+    label_to_use = constraint_label or build_data.get("constraint_label")
+    if label_to_use:
+        title = t("build_reply_title_constrained", lang=actual_lang, constraint=label_to_use).rstrip("\n")
+    else:
+        title = t("build_reply_title", lang=actual_lang).rstrip("\n")
+
+    lines = [title]
 
     for entry in items:
         item = entry["item"]
@@ -551,6 +587,56 @@ def classify_and_answer_local(
     ]
     for pattern in cheapest_patterns:
         if re.search(pattern, q):
+            constraint_text = None
+            if q.startswith("/build "):
+                constraint_text = q[7:].strip()
+            else:
+                m_c = re.search(
+                    r"(?:con|with|includendo|having|solo\s+con|only\s+with|usando|using)\s+([^?.,;]+)",
+                    q,
+                )
+                if m_c:
+                    constraint_text = m_c.group(1).strip()
+
+            if constraint_text:
+                parts = re.split(r"\s+(?:e|and)\s+|,\s*", constraint_text)
+                constraints: Dict[str, Any] = {}
+                labels: List[str] = []
+                unmatched_parts: List[str] = []
+
+                for part in parts:
+                    part_str = part.strip()
+                    if not part_str:
+                        continue
+                    m_items = search_items(part_str, bom, history)
+                    part_tokens = [w for w in re.split(r"\W+", part_str.lower()) if len(w) > 1]
+                    numeric_tokens = [w for w in part_tokens if any(c.isdigit() for c in w)]
+
+                    valid_match = False
+                    if m_items and m_items[0]["score"] >= 8:
+                        top_it = m_items[0]["item"]
+                        combined_text = (
+                            top_it.get("name", "") + " " + top_it.get("id", "") + " " + top_it.get("description", "")
+                        ).lower()
+                        if all(nt in combined_text for nt in numeric_tokens):
+                            valid_match = True
+
+                    if valid_match:
+                        top_it = m_items[0]["item"]
+                        cat = top_it.get("category", "")
+                        constraints[cat] = top_it["id"]
+                        labels.append(top_it.get("name", part_str))
+                    else:
+                        unmatched_parts.append(part_str)
+
+                if unmatched_parts and not constraints:
+                    return t("constraint_not_found", lang=actual_lang, constraint=", ".join(unmatched_parts))
+
+                if constraints:
+                    label_str = ", ".join(labels)
+                    build_data = calculate_cheapest_build(bom, history, constraints=constraints)
+                    return format_build_reply(build_data, lang=actual_lang, constraint_label=label_str)
+
             build_data = calculate_cheapest_build(bom, history)
             return format_build_reply(build_data, lang=actual_lang)
 
@@ -606,7 +692,8 @@ def answer_with_gemini(
         return None
 
     actual_lang = resolve_lang(lang)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
     context_data = {
         "bom_components": [
@@ -632,8 +719,11 @@ def answer_with_gemini(
         system_instruction = (
             "You are an AI assistant specialized in price tracking and BOM / PC build assembly optimization.\n"
             "Answer user questions in English using EXCLUSIVELY the provided context data.\n"
-            "If the user asks about the cheapest configuration or total cost, use the data from 'cheapest_calculated_build'. "
-            "Specify which option was selected for each category, its price, store, and the final total cost.\n"
+            "If the user asks about the generic cheapest configuration or total cost without specific constraints, "
+            "use the data from 'cheapest_calculated_build'.\n"
+            "If the user specifies constraints, preferences, or component choices (e.g. 'with 16GB GPU' or 'with ASUS motherboard'), "
+            "pick the component satisfying the constraint for that category and choose the cheapest available options for the other categories, "
+            "calculating the updated total and specifying each selected component.\n"
             "Use HTML formatting compatible with Telegram: <b>bold</b>, <i>italic</i>, <code>code</code>, <a href=\"URL\">link</a>.\n"
             "Be clear, concise, and direct."
         )
@@ -641,8 +731,11 @@ def answer_with_gemini(
         system_instruction = (
             "Sei un assistente AI specializzato nel monitoraggio dei prezzi di distinte base / assemblaggi.\n"
             "Rispondi alle domande dell'utente in italiano usando ESCLUSIVAMENTE i dati forniti nel contesto.\n"
-            "Se l'utente chiede della configurazione più conveniente o del costo totale, usa i dati di 'cheapest_calculated_build'. "
-            "Indica quale opzione è stata scelta per ciascuna categoria, il prezzo, lo store e il totale finale.\n"
+            "Se l'utente chiede della configurazione più conveniente generica (senza vincoli), "
+            "usa i dati di 'cheapest_calculated_build'.\n"
+            "Se l'utente specifica vincoli, preferenze o scelte di componenti (ad es. 'con GPU da 16 GB' o 'con scheda madre ASUS'), "
+            "seleziona il componente corrispondente al vincolo per quella categoria e scegli le opzioni più economiche per tutte le altre, "
+            "calcolando il totale aggiornato e specificando ciascun componente scelto.\n"
             "Usa formattazione HTML compatibile con Telegram: <b>grassetto</b>, <i>corsivo</i>, <code>codice</code>, <a href=\"URL\">link</a>.\n"
             "Sii chiaro, conciso e diretto."
         )
