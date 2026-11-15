@@ -157,6 +157,13 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "🖥️ <b>Configurazione Più Conveniente</b> (<i>vincolo: {constraint}</i>)\n"
             "<i>Combinazione ottimale rispettando il vincolo:</i>\n"
         ),
+        "build_error_missing_prices_header": (
+            "⚠️ <b>Impossibile determinare la configurazione più conveniente in questo momento.</b>\n\n"
+            "Non è stato possibile rilevare il prezzo corrente per i seguenti componenti:\n"
+        ),
+        "build_error_missing_prices_footer": (
+            "💡 <i>Verifica i link delle sorgenti o aggiorna i cookie dei relativi store prima di ricalcolare la configurazione.</i>"
+        ),
         "constraint_not_found": "⚠️ Nessun componente trovato per il vincolo '<b>{constraint}</b>'.",
         "opt_abbr": "Opz.",
         "badge_purchased": "Acquistato!",
@@ -320,6 +327,13 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "build_reply_title_constrained": (
             "🖥️ <b>Optimal Build Configuration</b> (<i>constraint: {constraint}</i>)\n"
             "<i>Optimal combination satisfying constraint:</i>\n"
+        ),
+        "build_error_missing_prices_header": (
+            "⚠️ <b>Unable to determine the most cost-effective configuration at this moment.</b>\n\n"
+            "Current prices could not be detected for the following components:\n"
+        ),
+        "build_error_missing_prices_footer": (
+            "💡 <i>Please verify source links or refresh store cookies before recalculating the build.</i>"
         ),
         "constraint_not_found": "⚠️ No components found matching constraint '<b>{constraint}</b>'.",
         "opt_abbr": "Opt.",
