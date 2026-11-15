@@ -58,6 +58,8 @@ const MESSAGES = {
       `▶️ <i>Price tracking for category <b>${category}</b> has been resumed.</i>`
     ),
     build_title: "🖥️ <b>Current Most Cost-Effective Configuration</b>\n<i>Optimal combination of interchangeable options:</i>\n",
+    build_title_constrained: (c) => `🖥️ <b>Optimal Build Configuration</b> (<i>constraint: ${c}</i>)\n<i>Optimal combination satisfying constraint:</i>\n`,
+    constraint_not_found: (c) => `⚠️ No components found matching constraint '<b>${c}</b>'.`,
     opt_label: "Opt.",
     purchased_badge: "Purchased!",
     below_target_badge: "Below target!",
@@ -96,7 +98,7 @@ const MESSAGES = {
       "• /buy &lt;item_id&gt; [price] - Mark an item as purchased\n" +
       "• /return &lt;item_id&gt; - Register a return and resume tracking\n" +
       "• /status - Show build progress and budget\n" +
-      "• /build - Show cheapest configuration\n" +
+      "• /build [constraint] - Show cheapest configuration (e.g. /build or /build gpu 16gb)\n" +
       "• /deals - Show active deals below target\n" +
       "• /help - Show this message"
     ),
@@ -133,6 +135,8 @@ const MESSAGES = {
       `▶️ <i>Il monitoraggio dei prezzi per la categoria <b>${category}</b> è stato riattivato.</i>`
     ),
     build_title: "🖥️ <b>Configurazione Più Conveniente Attuale</b>\n<i>Combinazione ottimale delle opzioni intercambiabili:</i>\n",
+    build_title_constrained: (c) => `🖥️ <b>Configurazione Più Conveniente</b> (<i>vincolo: ${c}</i>)\n<i>Combinazione ottimale rispettando il vincolo:</i>\n`,
+    constraint_not_found: (c) => `⚠️ Nessun componente trovato per il vincolo '<b>${c}</b>'.`,
     opt_label: "Opz.",
     purchased_badge: "Acquistato!",
     below_target_badge: "Sotto target!",
@@ -172,7 +176,7 @@ const MESSAGES = {
       "• /buy &lt;item_id&gt; [prezzo] - Segna componente come acquistato\n" +
       "• /return &lt;item_id&gt; - Registra reso e riattiva monitoraggio\n" +
       "• /status - Mostra avanzamento spesa e componenti mancanti\n" +
-      "• /build - Mostra la configurazione più economica\n" +
+      "• /build [vincolo] - Mostra la configurazione più economica (es. /build o /build gpu 16gb)\n" +
       "• /deals - Mostra le offerte sotto target\n" +
       "• /help - Mostra questo messaggio"
     ),
@@ -569,8 +573,9 @@ function handleStateMutation(userText, bom, history, config, lang) {
 
 /**
  * Calculate the cheapest combination across all BOM categories.
+ * Supports optional constraints (mapping category -> item_id or substring).
  */
-function calculateCheapestBuild(bom, history, lang = "en") {
+function calculateCheapestBuild(bom, history, lang = "en", constraints = null) {
   const msg = getMsg(lang);
   const categories = getBomCategories(bom);
   const byCategory = {};
@@ -623,8 +628,26 @@ function calculateCheapestBuild(bom, history, lang = "en") {
   let totalTarget = 0;
 
   for (const cat of categories) {
-    const options = byCategory[cat] || [];
+    let options = byCategory[cat] || [];
     if (options.length === 0) continue;
+
+    const constraint = constraints ? constraints[cat] : null;
+    if (constraint !== null && constraint !== undefined) {
+      const constrainedOptions = options.filter(opt => {
+        const it = opt.item;
+        if (typeof constraint === "string" && it.id === constraint) return true;
+        if (typeof constraint === "number" && it.option_index === constraint) return true;
+        if (typeof constraint === "string") {
+          const cLower = constraint.toLowerCase();
+          return ((it.name || "").toLowerCase().includes(cLower)) ||
+                 ((it.id || "").toLowerCase().includes(cLower));
+        }
+        return false;
+      });
+      if (constrainedOptions.length > 0) {
+        options = constrainedOptions;
+      }
+    }
 
     const purchasedOpt = options.find(o => o.isPurchased);
     const chosen = purchasedOpt || options.sort((a, b) => a.price - b.price)[0];
@@ -639,16 +662,17 @@ function calculateCheapestBuild(bom, history, lang = "en") {
     totalPrice,
     totalTarget,
     diffVsTarget: totalPrice - totalTarget,
+    constraints,
   };
 }
 
 /**
  * Format cheapest build into HTML message.
  */
-function formatBuildReply(build, config, lang) {
+function formatBuildReply(build, config, lang, constraintLabel = null) {
   const msg = getMsg(lang);
   const lines = [
-    msg.build_title
+    constraintLabel ? msg.build_title_constrained(constraintLabel) : msg.build_title
   ];
 
   for (const entry of build.items) {
@@ -924,6 +948,61 @@ function resolveLocalQuery(query, bom, history, config, lang) {
   ];
   for (const pat of cheapestPatterns) {
     if (pat.test(q)) {
+      let constraintText = null;
+      if (/^\/build\s+(.+)/i.test(q)) {
+        const m = q.match(/^\/build\s+(.+)/i);
+        if (m) constraintText = m[1].trim();
+      } else {
+        const m = q.match(/(?:con|with|includendo|having|solo\s+con|only\s+with|usando|using)\s+([^?.,;]+)/i);
+        if (m) constraintText = m[1].trim();
+      }
+
+      if (constraintText) {
+        const parts = constraintText.split(/\s+(?:e|and)\s+|,\s*/i);
+        const constraints = {};
+        const labels = [];
+        const unmatchedParts = [];
+
+        for (const part of parts) {
+          const partStr = part.trim();
+          if (!partStr) continue;
+
+          const mItems = searchItems(partStr, bom, history);
+          const partTokens = partStr.toLowerCase().split(/\W+/).filter(w => w.length > 1);
+          const numericTokens = partTokens.filter(w => /\d/.test(w));
+
+          let validMatch = false;
+          if (mItems && mItems.length > 0 && mItems[0].score >= 8) {
+            const topIt = mItems[0].item;
+            const combinedText = (
+              (topIt.name || "") + " " + (topIt.id || "") + " " + (topIt.description || "")
+            ).toLowerCase();
+            if (numericTokens.every(nt => combinedText.includes(nt))) {
+              validMatch = true;
+            }
+          }
+
+          if (validMatch) {
+            const topIt = mItems[0].item;
+            const cat = topIt.category;
+            constraints[cat] = topIt.id;
+            labels.push(topIt.name || partStr);
+          } else {
+            unmatchedParts.push(partStr);
+          }
+        }
+
+        if (unmatchedParts.length > 0 && Object.keys(constraints).length === 0) {
+          return msg.constraint_not_found(unmatchedParts.join(", "));
+        }
+
+        if (Object.keys(constraints).length > 0) {
+          const labelStr = labels.join(", ");
+          const build = calculateCheapestBuild(bom, history, lang, constraints);
+          return formatBuildReply(build, config, lang, labelStr);
+        }
+      }
+
       const build = calculateCheapestBuild(bom, history, lang);
       return formatBuildReply(build, config, lang);
     }
@@ -1021,16 +1100,20 @@ async function queryGemini(userQuery, bom, history, apiKey, lang) {
     ? (
       "Sei un assistente AI specializzato nel monitoraggio dei prezzi di distinte base / assemblaggi.\n" +
       "Rispondi alle domande dell'utente in italiano usando ESCLUSIVAMENTE i dati forniti nel contesto.\n" +
-      "Se l'utente chiede della configurazione più conveniente o del costo totale, usa i dati di 'cheapest_calculated_build'. " +
-      "Indica quale opzione è stata scelta per ciascuna categoria, il prezzo, lo store e il totale finale.\n" +
+      "Se l'utente chiede della configurazione più conveniente generica (senza vincoli), usa i dati di 'cheapest_calculated_build'.\n" +
+      "Se l'utente specifica vincoli, preferenze o componenti specifici (es. 'con GPU da 16GB' o 'con scheda madre ASUS'), " +
+      "seleziona per quella categoria il componente richiesto e per le altre categorie le opzioni più economiche disponibili, " +
+      "calcolando il totale aggiornato e specificando ciascun componente scelto.\n" +
       "Usa formattazione HTML Telegram: <b>grassetto</b>, <i>corsivo</i>, <code>codice</code>, <a href=\"URL\">link</a>.\n" +
       "Sii chiaro, conciso e sintetico."
     )
     : (
       "You are an AI assistant specialized in price tracking and BOM configuration optimization.\n" +
       "Answer user questions in English using EXCLUSIVELY the provided context data.\n" +
-      "If the user asks about the cheapest configuration or total cost, use the data from 'cheapest_calculated_build'. " +
-      "Specify which option was selected for each category, its price, store, and the final total cost.\n" +
+      "If the user asks about the generic cheapest configuration without specific constraints, use the data from 'cheapest_calculated_build'.\n" +
+      "If the user specifies constraints, preferences, or component choices (e.g. 'with 16GB GPU' or 'with ASUS motherboard'), " +
+      "pick the component satisfying the constraint for that category and choose the cheapest available options for the other categories, " +
+      "calculating the updated total and specifying each selected component.\n" +
       "Use Telegram HTML formatting: <b>bold</b>, <i>italic</i>, <code>code</code>, <a href=\"URL\">link</a>.\n" +
       "Be clear, concise, and direct."
     );

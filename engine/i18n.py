@@ -163,6 +163,11 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "🖥️ <b>Configurazione Più Conveniente Attuale</b>\n"
             "<i>Combinazione ottimale delle opzioni intercambiabili:</i>\n"
         ),
+        "build_reply_title_constrained": (
+            "🖥️ <b>Configurazione Più Conveniente</b> (<i>vincolo: {constraint}</i>)\n"
+            "<i>Combinazione ottimale rispettando il vincolo:</i>\n"
+        ),
+        "constraint_not_found": "⚠️ Nessun componente trovato per il vincolo '<b>{constraint}</b>'.",
         "opt_abbr": "Opz.",
         "badge_purchased": "Acquistato!",
         "badge_below_target": "Sotto target!",
@@ -332,6 +337,11 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "🖥️ <b>Current Most Cost-Effective Configuration</b>\n"
             "<i>Optimal combination of interchangeable options:</i>\n"
         ),
+        "build_reply_title_constrained": (
+            "🖥️ <b>Optimal Build Configuration</b> (<i>constraint: {constraint}</i>)\n"
+            "<i>Optimal combination satisfying constraint:</i>\n"
+        ),
+        "constraint_not_found": "⚠️ No components found matching constraint '<b>{constraint}</b>'.",
         "opt_abbr": "Opt.",
         "badge_purchased": "Purchased!",
         "badge_below_target": "Below target!",
