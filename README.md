@@ -253,9 +253,11 @@ price-tracker return mobo_tuf
 Ask questions in English or Italian. Deterministic regex answers common questions immediately; if `GEMINI_API_KEY` is provided, complex questions fall back to Google Gemini:
 
 ```bash
-# Find optimal build combination
+# Find optimal build combination (global or with specific constraints)
 price-tracker ask "what is the cheapest build?"
 price-tracker ask "qual è la configurazione più conveniente?"
+price-tracker ask "what is the cheapest build with rtx 4060?"
+price-tracker ask "qual è la configurazione più conveniente con GPU 16 GB?"
 
 # Check price of an item
 price-tracker ask "how much is the ryzen 7900?"
@@ -322,7 +324,7 @@ for res in results:
 
 ### 2. Calculating the Optimal / Cheapest Build
 
-Calculates the cheapest combination of components by choosing the lowest priced option in each category slot:
+Calculates the cheapest combination of components by choosing the lowest priced option in each category slot. You can also enforce specific component constraints (e.g. forcing a 16GB GPU or specific item ID):
 
 ```python
 from engine import load_bom, load_price_history, calculate_cheapest_build, format_build_reply
@@ -330,7 +332,7 @@ from engine import load_bom, load_price_history, calculate_cheapest_build, forma
 bom = load_bom("bom.json")
 history = load_price_history("price_history.json")
 
-# Calculate cheapest build dictionary
+# 1. Calculate unconstrained optimal build (cheapest across all options)
 build = calculate_cheapest_build(bom, history)
 
 print(f"Total Cost: €{build['total_price']:.2f}")
@@ -339,6 +341,9 @@ print(f"Diff vs Target: €{build['diff_vs_target']:+.2f}")
 
 for entry in build["items"]:
     print(f"  • {entry['item']['name']} -> €{entry['effective_price']:.2f} [{entry['store']}]")
+
+# 2. Or enforce specific constraints per category slot (e.g. force option 0 for gpu)
+build_constrained = calculate_cheapest_build(bom, history, constraints={"gpu": "gpu_4070_ti_super"})
 
 # Format into ready-to-send Telegram HTML message
 telegram_html = format_build_reply(build)
@@ -562,7 +567,7 @@ In addition to local execution, the engine includes a 100% serverless **Cloudfla
 
 - Listens to Telegram Webhooks 24/7 at 0 server cost.
 - Fetches fresh `bom.json`, `price_history.json`, and project configuration (`tracker_config.json`) directly from GitHub.
-- Supports `/buy`, `/return`, `/status`, `/build`, `/deals`, and natural language queries directly from Telegram.
+- Supports `/buy`, `/return`, `/status`, `/build` (including optional constraints like `/build gpu 16gb` or `/build 4060`), `/deals`, and natural language queries directly from Telegram.
 - Uses GitHub REST API with personal access tokens to **automatically commit purchases/returns** back to your GitHub repository.
 - See [`cloudflare_worker/README.md`](cloudflare_worker/README.md) for 2-minute deployment instructions.
 

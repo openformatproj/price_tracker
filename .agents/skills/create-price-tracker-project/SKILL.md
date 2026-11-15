@@ -239,7 +239,9 @@ Explain to the user:
      ```
    - Telegram will confirm: `{"ok":true,"result":true,"description":"Webhook was set"}`.
 5. **Verify Bot in Telegram**:
-   - Send `/help`, `/status`, `/build`, `/deals`.
+   - Send `/help`, `/status`, `/deals`.
+   - Test build optimization: `/build` (for global cheapest build) or `/build <constraint>` (e.g. `/build gpu 16gb` or `/build 4060` to force a specific interchangeable option).
+   - Try natural language questions: *"Qual è la configurazione più conveniente con GPU 16 GB?"* or *"What is the cheapest build?"*.
    - Try a natural language purchase: *"I bought the GPU for 820€"* (or in Italian: *"Ho comprato la scheda madre a 140€"*).
    - Check your GitHub repository: `price_history.json` should be updated with a new commit!
 
