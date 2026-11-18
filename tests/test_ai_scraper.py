@@ -87,7 +87,8 @@ class TestAiPriceExtraction(unittest.TestCase):
         </html>
         """
 
-    def test_missing_api_key(self):
+    @patch("engine.ai_scraper.get_gemini_api_key", return_value=None)
+    def test_missing_api_key(self, mock_get_key):
         with patch.dict(os.environ, {}, clear=True):
             price, err, meta = extract_price_with_ai(self.item, self.source, self.sample_html, api_key=None)
             self.assertIsNone(price)

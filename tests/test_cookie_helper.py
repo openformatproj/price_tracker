@@ -108,7 +108,13 @@ class TestCookieHelper(unittest.TestCase):
             self.assertTrue(ok)
             self.assertEqual(val, "secret_datadome_token_abc")
             self.assertIsNone(err)
-            mock_save.assert_called_once_with("trovaprezzi.it", "datadome", "secret_datadome_token_abc", "cookies.json")
+            mock_save.assert_called_once_with(
+            "trovaprezzi.it",
+            "datadome",
+            "secret_datadome_token_abc",
+            "cookies.json",
+            extra_cookies={"other_cookie": "123", "datadome": "secret_datadome_token_abc"},
+        )
 
 
 if __name__ == "__main__":

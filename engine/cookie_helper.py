@@ -44,21 +44,24 @@ def save_cookie_to_file(
     cookie_name: str,
     cookie_value: str,
     cookies_path: str = "cookies.json",
+    extra_cookies: Optional[Dict[str, str]] = None,
 ) -> bool:
-    """Save or update a specific cookie in cookies.json."""
+    """Save or update cookies in cookies.json."""
     data: Dict[str, Any] = {}
     if os.path.exists(cookies_path):
         try:
             with open(cookies_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
-            logger.warning("Could not read %s: %e. Overwriting.", cookies_path, e)
+            logger.warning("Could not read %s: %s. Overwriting.", cookies_path, e)
             data = {}
 
     if domain not in data or not isinstance(data[domain], dict):
         data[domain] = {}
 
     data[domain][cookie_name] = cookie_value
+    if extra_cookies:
+        data[domain].update(extra_cookies)
 
     try:
         with open(cookies_path, "w", encoding="utf-8") as f:
@@ -97,6 +100,7 @@ def refresh_browser_cookies(
         browser_bin,
         f"--remote-debugging-port={port}",
         f"--user-data-dir={temp_profile}",
+        "--disable-blink-features=AutomationControlled",
         "--no-first-run",
         "--no-default-browser-check",
     ]
@@ -162,13 +166,34 @@ def refresh_browser_cookies(
                     raw_resp = ws.recv(timeout=3)
                     resp = json.loads(raw_resp)
                     cookies_list = resp.get("result", {}).get("cookies", [])
+                    domain_cookies = {}
                     for c in cookies_list:
-                        if c.get("name") == target_cookie:
-                            c_val = c.get("value")
-                            if c_val:
-                                extracted_val = c_val
-                                break
-                    if extracted_val:
+                        c_name = c.get("name")
+                        c_val = c.get("value")
+                        if c_name and c_val:
+                            domain_cookies[c_name] = c_val
+                        if c_name == target_cookie and c_val:
+                            extracted_val = c_val
+
+                    # Check page title to avoid early exit while Cloudflare/Turnstile challenge is active
+                    is_challenge = False
+                    try:
+                        ws.send(json.dumps({
+                            "id": req_id,
+                            "method": "Runtime.evaluate",
+                            "params": {"expression": "document.title"},
+                        }))
+                        req_id += 1
+                        raw_t = ws.recv(timeout=2)
+                        t_val = json.loads(raw_t).get("result", {}).get("result", {}).get("value", "")
+                        if t_val and any(kw in t_val.lower() for kw in ["ci siamo quasi", "just a moment", "challenge"]):
+                            is_challenge = True
+                    except Exception:
+                        pass
+
+                    if not is_challenge and (extracted_val or "cf_clearance" in domain_cookies):
+                        if not extracted_val and "cf_clearance" in domain_cookies:
+                            extracted_val = domain_cookies["cf_clearance"]
                         break
                 except Exception:
                     pass
@@ -191,9 +216,15 @@ def refresh_browser_cookies(
         shutil.rmtree(temp_profile, ignore_errors=True)
 
     if extracted_val:
-        saved = save_cookie_to_file(target_domain, target_cookie, extracted_val, cookies_path)
+        saved = save_cookie_to_file(
+            target_domain,
+            target_cookie if target_cookie in domain_cookies else "cf_clearance",
+            extracted_val,
+            cookies_path,
+            extra_cookies=domain_cookies,
+        )
         if saved:
-            print(f"✅ Successfully captured cookie '{target_cookie}'!")
+            print(f"✅ Successfully captured cookies: {', '.join(domain_cookies.keys())}!")
             print(f"💾 Saved to {cookies_path}")
             return True, extracted_val, None
         return True, extracted_val, f"Captured cookie but failed to write to {cookies_path}"

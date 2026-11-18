@@ -735,7 +735,7 @@ def answer_with_gemini(
         return None
 
     actual_lang = resolve_lang(lang)
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
     context_data = {
