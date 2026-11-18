@@ -132,6 +132,22 @@ class TestCLI(unittest.TestCase):
             mock_status.assert_called_once()
             self.assertEqual(cm.exception.code, 0)
 
+    @patch("engine.cookie_helper.refresh_browser_cookies")
+    def test_cli_refresh_cookies_subcommand(self, mock_refresh):
+        mock_refresh.return_value = (True, "mocked_cookie_token", None)
+        with patch.object(sys, "argv", ["price-tracker", "refresh-cookies", "--headless"]):
+            with self.assertRaises(SystemExit) as cm:
+                main()
+            self.assertEqual(cm.exception.code, 0)
+            mock_refresh.assert_called_once_with(
+                url="https://www.trovaprezzi.it",
+                target_domain="trovaprezzi.it",
+                target_cookie="datadome",
+                cookies_path="cookies.json",
+                timeout=60,
+                headless=True,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

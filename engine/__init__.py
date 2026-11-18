@@ -40,8 +40,12 @@ from .ai_scraper import (
     prune_html_for_ai,
     get_gemini_api_key,
 )
+from .cookie_helper import (
+    refresh_browser_cookies,
+    save_cookie_to_file,
+)
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __all__ = [
     "load_bom",
     "load_price_history",
@@ -73,4 +77,6 @@ __all__ = [
     "extract_price_with_ai",
     "prune_html_for_ai",
     "get_gemini_api_key",
+    "refresh_browser_cookies",
+    "save_cookie_to_file",
 ]

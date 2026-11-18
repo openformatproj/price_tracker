@@ -123,6 +123,14 @@ def main() -> None:
     test_ai_parser.add_argument("item_id", help="BOM item ID (e.g. cpu_ryzen_7900)")
     test_ai_parser.add_argument("--store", type=str, default=None, help="Filter to a specific store (e.g. Alternate, Trovaprezzi)")
 
+    # 9. refresh-cookies
+    refresh_parser = subparsers.add_parser("refresh-cookies", help="Open a local browser to refresh anti-bot cookies (e.g. DataDome) automatically")
+    refresh_parser.add_argument("--url", default="https://www.trovaprezzi.it", help="Target URL (default: https://www.trovaprezzi.it)")
+    refresh_parser.add_argument("--domain", default="trovaprezzi.it", help="Domain key in cookies.json (default: trovaprezzi.it)")
+    refresh_parser.add_argument("--cookie-name", default="datadome", help="Target cookie to capture (default: datadome)")
+    refresh_parser.add_argument("--timeout", type=int, default=60, help="Timeout in seconds to wait for cookie (default: 60)")
+    refresh_parser.add_argument("--headless", action="store_true", help="Run browser in headless mode")
+
     # Fallback flags for backward-compatibility with direct `python tracker.py --dry-run` etc.
     parser.add_argument("--dry-run", action="store_true", help="Scrape prices without notifying or saving")
     parser.add_argument("--force-notify", action="store_true", help="Force Telegram notifications")
@@ -269,6 +277,22 @@ def main() -> None:
             except Exception as e:
                 print(f"  ❌ Fetch error: {e}")
         sys.exit(0)
+
+    if args.command == "refresh-cookies":
+        from .cookie_helper import refresh_browser_cookies
+        success, val, err = refresh_browser_cookies(
+            url=args.url,
+            target_domain=args.domain,
+            target_cookie=args.cookie_name,
+            cookies_path=args.cookies,
+            timeout=args.timeout,
+            headless=args.headless,
+        )
+        if success:
+            sys.exit(0)
+        else:
+            print(f"❌ Failed to refresh cookie: {err}")
+            sys.exit(1)
 
     # Default: Run tracker check
     dry_run = getattr(args, "dry_run", False)

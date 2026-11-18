@@ -27,6 +27,7 @@ It can track PC builds, 3D printers, camera setups, home lab servers, or any cus
       - [6. `price-tracker serve` (Local Webhook Server)](#6-price-tracker-serve-local-webhook-server)
       - [7. `price-tracker test-telegram` (Test Credentials)](#7-price-tracker-test-telegram-test-credentials)
       - [8. `price-tracker test-ai` (Test AI Semantic Extraction)](#8-price-tracker-test-ai-test-ai-semantic-extraction)
+      - [9. `price-tracker refresh-cookies` (Local Browser Cookie Refresh)](#9-price-tracker-refresh-cookies-local-browser-cookie-refresh)
   - [🐍 Python SDK \& API Reference](#-python-sdk--api-reference)
     - [1. Running Price Checks \& Scraping](#1-running-price-checks--scraping)
     - [2. Calculating the Optimal / Cheapest Build](#2-calculating-the-optimal--cheapest-build)
@@ -307,6 +308,14 @@ price-tracker test-ai cpu_ryzen_7900 [--store Alternate]
 ```
 
 *Displays HTTP fetch status, extracted price, verified merchant/seller, condition, stock availability, and any suggested self-healing CSS selectors.*
+
+#### 9. `price-tracker refresh-cookies` (Local Browser Cookie Refresh)
+Launches a real browser via Chrome DevTools Protocol (CDP) to automatically capture fresh anti-bot session cookies (e.g. DataDome) and update `cookies.json`:
+
+```bash
+price-tracker refresh-cookies [--url https://www.trovaprezzi.it] [--timeout 60]
+```
+*(For complete local/headless server documentation, see [docs/LOCAL_BROWSER_COOKIE_HELPER.md](docs/LOCAL_BROWSER_COOKIE_HELPER.md)).*
 
 ---
 
