@@ -157,8 +157,7 @@ def refresh_browser_cookies(
 
                 ws.send(json.dumps({
                     "id": req_id,
-                    "method": "Network.getCookies",
-                    "params": {"urls": [url]},
+                    "method": "Network.getAllCookies",
                 }))
                 req_id += 1
 
@@ -170,10 +169,12 @@ def refresh_browser_cookies(
                     for c in cookies_list:
                         c_name = c.get("name")
                         c_val = c.get("value")
-                        if c_name and c_val:
-                            domain_cookies[c_name] = c_val
-                        if c_name == target_cookie and c_val:
-                            extracted_val = c_val
+                        c_dom = c.get("domain", "")
+                        if not c_dom or target_domain in c_dom:
+                            if c_name and c_val:
+                                domain_cookies[c_name] = c_val
+                            if c_name == target_cookie and c_val:
+                                extracted_val = c_val
 
                     # Check page title to avoid early exit while Cloudflare/Turnstile challenge is active
                     is_challenge = False
